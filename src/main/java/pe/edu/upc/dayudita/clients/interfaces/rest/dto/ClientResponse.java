@@ -1,5 +1,7 @@
 package pe.edu.upc.dayudita.clients.interfaces.rest.dto;
 
+import java.math.BigDecimal;
+
 public record ClientResponse(
 
         Long id,
@@ -9,8 +11,8 @@ public record ClientResponse(
         String documentNumber,
         String email,
         String phone,
-        Integer cutoffDay,
-        Integer paymentDay,
+        BigDecimal teaPactada,
+        BigDecimal teaMoratoriaPactada,
         Boolean active
 
 ) {

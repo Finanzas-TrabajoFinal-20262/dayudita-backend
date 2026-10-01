@@ -2,145 +2,397 @@ package pe.edu.upc.dayudita.finance.application;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pe.edu.upc.dayudita.clients.domain.model.ClientAccount;
 import pe.edu.upc.dayudita.finance.domain.model.*;
 import pe.edu.upc.dayudita.finance.domain.repository.CreditPlanRepository;
 import pe.edu.upc.dayudita.finance.domain.repository.InstallmentRepository;
+import pe.edu.upc.dayudita.finance.interfaces.rest.dto.CreditPlanResponse;
+import pe.edu.upc.dayudita.finance.interfaces.rest.dto.InstallmentDisplayStatus;
+import pe.edu.upc.dayudita.finance.interfaces.rest.dto.InstallmentResponse;
 import pe.edu.upc.dayudita.sales.domain.model.Purchase;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class CreditPlanService {
 
-    public static final int PAYMENT_PERIOD_DAYS = 15;
+    public static final int PAYMENT_PERIOD_DAYS = FinancialCalculator.PAYMENT_PERIOD_DAYS;
+    private static final int MONTHS_PER_PERIOD = 15;
+    private static final int DAYS_PER_MONTH = 30;
 
     private final CreditPlanRepository creditPlanRepository;
     private final InstallmentRepository installmentRepository;
-    private final FinancialConfigurationService financialConfigurationService;
     private final FinancialCalculator financialCalculator;
     private final FinancialDateService financialDateService;
 
     public CreditPlanService(
             CreditPlanRepository creditPlanRepository,
             InstallmentRepository installmentRepository,
-            FinancialConfigurationService financialConfigurationService,
             FinancialCalculator financialCalculator,
             FinancialDateService financialDateService
     ){
         this.creditPlanRepository = creditPlanRepository;
         this.installmentRepository = installmentRepository;
-        this.financialConfigurationService = financialConfigurationService;
         this.financialCalculator = financialCalculator;
         this.financialDateService = financialDateService;
     }
 
+    public int totalInstallments(int numeroMeses){
+        return numeroMeses * DAYS_PER_MONTH / MONTHS_PER_PERIOD;
+    }
+
     @Transactional
-    public CreditPlan createPlan(Purchase purchase, Integer installmentCount){
-        FinancialConfiguration configuration = financialConfigurationService.getConfiguration();
+    public CreditPlan createPlan(
+            Purchase purchase,
+            BigDecimal ventaPrecio,
+            BigDecimal porcentajeCuotaInicial,
+            int numeroMeses,
+            int periodosGraciaTotal,
+            int periodosGraciaParcial
+    ){
+        ClientAccount account = purchase.getClientAccount();
+        BigDecimal teaPactada = account.getTeaPactada();
+        int n = totalInstallments(numeroMeses);
 
-        LocalDate graceEndDate = financialDateService.getGraceEndDate(
-                purchase.getPurchaseDate(),
-                purchase.getClientAccount().getCutoffDay(),
-                purchase.getClientAccount().getPaymentDay()
+        BigDecimal cuotaInicial = financialCalculator.money(ventaPrecio.multiply(porcentajeCuotaInicial));
+        BigDecimal principal = financialCalculator.money(ventaPrecio.subtract(cuotaInicial));
+
+        Schedule schedule = buildSchedule(
+                principal,
+                teaPactada,
+                n,
+                periodosGraciaTotal,
+                periodosGraciaParcial,
+                purchase.getPurchaseDate()
         );
 
-        int graceDays = financialDateService.commercialDaysBetween(
-                purchase.getPurchaseDate(),
-                graceEndDate
+        CreditPlan plan = new CreditPlan();
+        plan.setPurchase(purchase);
+        plan.setVentaPrecio(financialCalculator.money(ventaPrecio));
+        plan.setPorcentajeCuotaInicial(porcentajeCuotaInicial);
+        plan.setCuotaInicial(cuotaInicial);
+        plan.setPrincipal(principal);
+        plan.setTeaPactada(teaPactada);
+        plan.setTeq(schedule.teq());
+        plan.setTeaMoratoriaPactada(account.getTeaMoratoriaPactada());
+        plan.setNumeroMeses(numeroMeses);
+        plan.setInstallmentCount(n);
+        plan.setPeriodosGraciaTotal(periodosGraciaTotal);
+        plan.setPeriodosGraciaParcial(periodosGraciaParcial);
+        plan.setTotalIntereses(schedule.totalIntereses());
+        plan.setInteresCapitalizado(schedule.interesCapitalizado());
+        plan.setTotalAmortizacion(schedule.totalAmortizacion());
+        plan.setTotalCuotas(schedule.totalCuotas());
+        plan.setTotalAPagar(financialCalculator.money(cuotaInicial.add(schedule.totalCuotas())));
+
+        plan = creditPlanRepository.save(plan);
+
+        for(Row row : schedule.rows()){
+            Installment installment = new Installment();
+            installment.setCreditPlan(plan);
+            installment.setInstallmentNumber(row.k());
+            installment.setType(row.type());
+            installment.setDueDate(row.dueDate());
+            installment.setOpeningBalance(row.openingBalance());
+            installment.setInterest(row.interest());
+            installment.setAmount(row.payment());
+            installment.setAmortization(row.amortization());
+            installment.setRemainingBalance(row.remainingBalance());
+            // Las cuotas de gracia total no requieren accion de pago (R=0):
+            // se marcan resueltas desde el inicio para que el orden de pago
+            // y el cierre del plan no necesiten un caso especial para ellas.
+            installment.setStatus(row.type() == GraceType.TOTAL ? InstallmentStatus.PAID : InstallmentStatus.PENDING);
+            installmentRepository.save(installment);
+        }
+
+        return plan;
+    }
+
+    public CreditPlanResponse simulate(
+            BigDecimal ventaPrecio,
+            BigDecimal porcentajeCuotaInicial,
+            int numeroMeses,
+            int periodosGraciaTotal,
+            int periodosGraciaParcial,
+            BigDecimal teaPactada,
+            BigDecimal teaMoratoriaPactada,
+            LocalDate purchaseDate
+    ){
+        int n = totalInstallments(numeroMeses);
+        BigDecimal cuotaInicial = financialCalculator.money(ventaPrecio.multiply(porcentajeCuotaInicial));
+        BigDecimal principal = financialCalculator.money(ventaPrecio.subtract(cuotaInicial));
+
+        Schedule schedule = buildSchedule(
+                principal,
+                teaPactada,
+                n,
+                periodosGraciaTotal,
+                periodosGraciaParcial,
+                purchaseDate
         );
 
-        BigDecimal graceRate = financialCalculator.effectiveRateForDays(
-                configuration.getAnnualEffectiveRate(),
-                graceDays
+        List<InstallmentResponse> installments = new ArrayList<>();
+        for(Row row : schedule.rows()){
+            installments.add(new InstallmentResponse(
+                    null,
+                    row.k(),
+                    row.type(),
+                    row.dueDate(),
+                    row.openingBalance(),
+                    row.interest(),
+                    row.payment(),
+                    row.amortization(),
+                    row.remainingBalance(),
+                    0,
+                    BigDecimal.ZERO.setScale(9),
+                    financialCalculator.money(BigDecimal.ZERO),
+                    financialCalculator.money(row.payment()),
+                    row.type() == GraceType.TOTAL ? InstallmentDisplayStatus.GRACE_TOTAL : InstallmentDisplayStatus.PENDING,
+                    null
+            ));
+        }
+
+        BigDecimal totalAPagar = financialCalculator.money(cuotaInicial.add(schedule.totalCuotas()));
+
+        return new CreditPlanResponse(
+                null,
+                null,
+                null,
+                null,
+                financialCalculator.money(ventaPrecio),
+                porcentajeCuotaInicial,
+                cuotaInicial,
+                principal,
+                teaPactada,
+                schedule.teq(),
+                teaMoratoriaPactada,
+                PAYMENT_PERIOD_DAYS,
+                numeroMeses,
+                n,
+                periodosGraciaTotal,
+                periodosGraciaParcial,
+                schedule.totalIntereses(),
+                schedule.interesCapitalizado(),
+                schedule.totalAmortizacion(),
+                schedule.totalCuotas(),
+                totalAPagar,
+                financialCalculator.money(BigDecimal.ZERO),
+                totalAPagar,
+                null,
+                installments
         );
-        BigDecimal capitalizedPrincipal = financialCalculator.capitalize(
-                purchase.getTotal(),
-                graceRate
+    }
+
+    public CreditPlanResponse toCreditPlanResponse(CreditPlan plan){
+        ClientAccount account = plan.getPurchase().getClientAccount();
+        LocalDate today = LocalDate.now();
+
+        List<InstallmentResponse> installmentResponses = new ArrayList<>();
+        BigDecimal totalInteresMoratorio = BigDecimal.ZERO;
+
+        for(Installment installment : getInstallments(plan.getId())){
+            MoratoryBreakdown breakdown = computeMoratoryBreakdown(
+                    installment,
+                    account.getTeaMoratoriaPactada(),
+                    today
+            );
+
+            installmentResponses.add(new InstallmentResponse(
+                    installment.getId(),
+                    installment.getInstallmentNumber(),
+                    installment.getType(),
+                    installment.getDueDate(),
+                    installment.getOpeningBalance(),
+                    installment.getInterest(),
+                    installment.getAmount(),
+                    installment.getAmortization(),
+                    installment.getRemainingBalance(),
+                    breakdown.diasMora(),
+                    breakdown.tasaMoratoriaTramo(),
+                    breakdown.interesMoratorio(),
+                    breakdown.pagoTotal(),
+                    resolveDisplayStatus(installment, today),
+                    installment.getPaymentDate()
+            ));
+
+            totalInteresMoratorio = totalInteresMoratorio.add(breakdown.interesMoratorio());
+        }
+
+        totalInteresMoratorio = financialCalculator.money(totalInteresMoratorio);
+
+        return new CreditPlanResponse(
+                plan.getId(),
+                plan.getPurchase().getId(),
+                account.getClient().getId(),
+                account.getStore().getId(),
+                plan.getVentaPrecio(),
+                plan.getPorcentajeCuotaInicial(),
+                plan.getCuotaInicial(),
+                plan.getPrincipal(),
+                plan.getTeaPactada(),
+                plan.getTeq(),
+                plan.getTeaMoratoriaPactada(),
+                PAYMENT_PERIOD_DAYS,
+                plan.getNumeroMeses(),
+                plan.getInstallmentCount(),
+                plan.getPeriodosGraciaTotal(),
+                plan.getPeriodosGraciaParcial(),
+                plan.getTotalIntereses(),
+                plan.getInteresCapitalizado(),
+                plan.getTotalAmortizacion(),
+                plan.getTotalCuotas(),
+                plan.getTotalAPagar(),
+                totalInteresMoratorio,
+                financialCalculator.money(plan.getTotalAPagar().add(totalInteresMoratorio)),
+                plan.getStatus(),
+                installmentResponses
         );
+    }
 
-        BigDecimal periodRate = financialCalculator.effectiveRateForDays(
-                configuration.getAnnualEffectiveRate(),
-                PAYMENT_PERIOD_DAYS
+    /**
+     * Mora y pago exacto de una cuota evaluados a una fecha dada (la fecha
+     * de pago real si se esta registrando un pago, o hoy si solo se esta
+     * consultando el cronograma).
+     */
+    public MoratoryBreakdown computeMoratoryBreakdown(
+            Installment installment,
+            BigDecimal teaMoratoriaPactada,
+            LocalDate asOfDate
+    ){
+        int diasMora = resolveOverdueDays(installment, asOfDate);
+        BigDecimal tasaMoratoriaTramo = financialCalculator.moratoryTrancheRate(teaMoratoriaPactada, diasMora);
+        BigDecimal interesMoratorio = financialCalculator.moratoryInterest(installment.getAmount(), tasaMoratoriaTramo);
+        BigDecimal pagoTotal = financialCalculator.totalPayment(installment.getAmount(), interesMoratorio);
+
+        return new MoratoryBreakdown(
+                diasMora,
+                tasaMoratoriaTramo,
+                financialCalculator.money(interesMoratorio),
+                financialCalculator.money(pagoTotal)
         );
+    }
 
-        BigDecimal regularPayment = financialCalculator.frenchPayment(
-                capitalizedPrincipal,
-                periodRate,
-                installmentCount
-        );
+    private int resolveOverdueDays(Installment installment, LocalDate asOfDate){
+        if(installment.getType() == GraceType.TOTAL){
+            return 0;
+        }
 
-        CreditPlan creditPlan = new CreditPlan();
-        creditPlan.setPurchase(purchase);
-        creditPlan.setPrincipal(purchase.getTotal());
-        creditPlan.setCapitalizedPrincipal(capitalizedPrincipal);
-        creditPlan.setAnnualEffectiveRate(configuration.getAnnualEffectiveRate());
-        creditPlan.setPeriodRate(periodRate);
-        creditPlan.setGraceDays(graceDays);
-        creditPlan.setInstallmentCount(installmentCount);
-        creditPlan.setGraceEndDate(graceEndDate);
+        LocalDate referenceDate = installment.getPaymentDate() != null ? installment.getPaymentDate() : asOfDate;
 
-        creditPlan = creditPlanRepository.save(creditPlan);
+        if(!referenceDate.isAfter(installment.getDueDate())){
+            return 0;
+        }
 
-        BigDecimal balance = capitalizedPrincipal;
+        return financialDateService.commercialDaysBetween(installment.getDueDate(), referenceDate);
+    }
 
-        for(int number = 1; number <= installmentCount; number++){
+    private InstallmentDisplayStatus resolveDisplayStatus(Installment installment, LocalDate today){
+        if(installment.getType() == GraceType.TOTAL){
+            return InstallmentDisplayStatus.GRACE_TOTAL;
+        }
+
+        if(installment.getStatus() == InstallmentStatus.PAID){
+            return InstallmentDisplayStatus.PAID;
+        }
+
+        if(installment.getDueDate().isBefore(today)){
+            return InstallmentDisplayStatus.OVERDUE;
+        }
+
+        return InstallmentDisplayStatus.PENDING;
+    }
+
+    private Schedule buildSchedule(
+            BigDecimal principal,
+            BigDecimal teaPactada,
+            int n,
+            int periodosGraciaTotal,
+            int periodosGraciaParcial,
+            LocalDate purchaseDate
+    ){
+        BigDecimal teq = financialCalculator.periodicRate(teaPactada);
+
+        List<Row> rows = new ArrayList<>();
+        BigDecimal totalIntereses = BigDecimal.ZERO;
+        BigDecimal interesCapitalizado = BigDecimal.ZERO;
+        BigDecimal totalAmortizacion = BigDecimal.ZERO;
+        BigDecimal totalCuotas = BigDecimal.ZERO;
+
+        BigDecimal balance = principal;
+
+        for(int k = 1; k <= n; k++){
             BigDecimal openingBalance = balance;
+            GraceType type = resolveGraceType(k, periodosGraciaTotal, periodosGraciaParcial);
 
-            BigDecimal interest = financialCalculator.installmentInterest(openingBalance, periodRate);
-            BigDecimal amortization;
+            BigDecimal interest = financialCalculator.installmentInterest(openingBalance, teq);
             BigDecimal payment;
+            BigDecimal amortization;
             BigDecimal remainingBalance;
 
-            if(number == installmentCount){
-                amortization = financialCalculator.money(openingBalance);
-                payment = financialCalculator.money(amortization.add(interest));
-                remainingBalance = financialCalculator.money(BigDecimal.ZERO);
-            }else{
-                amortization = financialCalculator.installmentAmortization(regularPayment, interest);
-
-                if(amortization.compareTo(BigDecimal.ZERO) <= 0){
-                    throw new IllegalArgumentException("La cuota calculada no permite amortizar el capital");
+            switch(type){
+                case TOTAL -> {
+                    payment = BigDecimal.ZERO;
+                    amortization = BigDecimal.ZERO;
+                    remainingBalance = openingBalance.add(interest);
                 }
-
-                payment = regularPayment;
-                remainingBalance = financialCalculator.money(openingBalance.subtract(amortization));
+                case PARTIAL -> {
+                    payment = interest;
+                    amortization = BigDecimal.ZERO;
+                    remainingBalance = openingBalance;
+                }
+                default -> {
+                    payment = financialCalculator.frenchInstallmentPayment(openingBalance, teq, n - k + 1);
+                    amortization = financialCalculator.amortization(payment, interest);
+                    remainingBalance = openingBalance.subtract(amortization);
+                }
             }
 
-            Installment installment = new Installment();
-            installment.setCreditPlan(creditPlan);
-            installment.setInstallmentNumber(number);
-            installment.setDueDate(financialDateService.addPaymentPeriods(
-                    graceEndDate,
-                    number,
-                    PAYMENT_PERIOD_DAYS
-            ));
-            installment.setOpeningBalance(openingBalance);
-            installment.setInterest(interest);
-            installment.setAmortization(amortization);
-            installment.setAmount(payment);
-            installment.setRemainingBalance(remainingBalance);
+            LocalDate dueDate = financialDateService.dueDateForInstallment(purchaseDate, k, PAYMENT_PERIOD_DAYS);
 
-            installmentRepository.save(installment);
+            rows.add(new Row(
+                    k,
+                    type,
+                    dueDate,
+                    financialCalculator.money(openingBalance),
+                    financialCalculator.money(interest),
+                    financialCalculator.money(payment),
+                    financialCalculator.money(amortization),
+                    financialCalculator.money(remainingBalance)
+            ));
+
+            totalIntereses = totalIntereses.add(interest);
+            if(type == GraceType.TOTAL){
+                interesCapitalizado = interesCapitalizado.add(interest);
+            }
+            totalAmortizacion = totalAmortizacion.add(amortization);
+            totalCuotas = totalCuotas.add(payment);
+
             balance = remainingBalance;
         }
 
-        return creditPlan;
-    }
-
-
-    public BigDecimal getGraceRate(CreditPlan plan){
-        return financialCalculator.effectiveRateForDays(
-                plan.getAnnualEffectiveRate(),
-                plan.getGraceDays()
+        return new Schedule(
+                teq,
+                rows,
+                financialCalculator.money(totalIntereses),
+                financialCalculator.money(interesCapitalizado),
+                financialCalculator.money(totalAmortizacion),
+                financialCalculator.money(totalCuotas)
         );
     }
 
-    public BigDecimal getGraceInterest(CreditPlan plan){
-        return financialCalculator.money(
-                plan.getCapitalizedPrincipal().subtract(plan.getPrincipal())
-        );
+    private GraceType resolveGraceType(int k, int periodosGraciaTotal, int periodosGraciaParcial){
+        if(k <= periodosGraciaTotal){
+            return GraceType.TOTAL;
+        }
+
+        if(k <= periodosGraciaTotal + periodosGraciaParcial){
+            return GraceType.PARTIAL;
+        }
+
+        return GraceType.STANDARD;
     }
 
     public List<CreditPlan> getPlansByClient(Long clientId){
@@ -160,5 +412,35 @@ public class CreditPlanService {
         return creditPlanRepository
                 .findFirstByPurchase_ClientAccount_Client_IdAndStatus(clientId, CreditPlanStatus.ACTIVE)
                 .isPresent();
+    }
+
+    private record Row(
+            int k,
+            GraceType type,
+            LocalDate dueDate,
+            BigDecimal openingBalance,
+            BigDecimal interest,
+            BigDecimal payment,
+            BigDecimal amortization,
+            BigDecimal remainingBalance
+    ) {
+    }
+
+    private record Schedule(
+            BigDecimal teq,
+            List<Row> rows,
+            BigDecimal totalIntereses,
+            BigDecimal interesCapitalizado,
+            BigDecimal totalAmortizacion,
+            BigDecimal totalCuotas
+    ) {
+    }
+
+    public record MoratoryBreakdown(
+            int diasMora,
+            BigDecimal tasaMoratoriaTramo,
+            BigDecimal interesMoratorio,
+            BigDecimal pagoTotal
+    ) {
     }
 }

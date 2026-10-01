@@ -41,8 +41,6 @@ public class Purchase {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal total;
 
-    private Integer installmentCount;
-
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

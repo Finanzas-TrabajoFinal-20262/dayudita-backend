@@ -15,7 +15,6 @@ public record PurchaseResponse(
         PurchasePaymentMode paymentMode,
         PurchaseStatus status,
         BigDecimal total,
-        Integer installmentCount,
         List<PurchaseItemResponse> items
 ) {
 }

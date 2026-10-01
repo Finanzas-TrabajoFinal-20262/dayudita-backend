@@ -6,6 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import pe.edu.upc.dayudita.stores.domain.model.Store;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(
         name = "client_accounts",
@@ -30,11 +32,11 @@ public class ClientAccount {
     @JoinColumn(name = "store_id", nullable = false)
     private Store store;
 
-    @Column(nullable = false)
-    private Integer cutoffDay;
+    @Column(nullable = false, precision = 16, scale = 12)
+    private BigDecimal teaPactada;
 
-    @Column(nullable = false)
-    private Integer paymentDay;
+    @Column(nullable = false, precision = 16, scale = 12)
+    private BigDecimal teaMoratoriaPactada;
 
     @Column(nullable = false)
     private Boolean active = true;

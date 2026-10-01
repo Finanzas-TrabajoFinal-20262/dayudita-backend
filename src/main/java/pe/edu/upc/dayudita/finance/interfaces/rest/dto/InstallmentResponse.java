@@ -1,6 +1,6 @@
 package pe.edu.upc.dayudita.finance.interfaces.rest.dto;
 
-import pe.edu.upc.dayudita.finance.domain.model.InstallmentStatus;
+import pe.edu.upc.dayudita.finance.domain.model.GraceType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -8,13 +8,18 @@ import java.time.LocalDate;
 public record InstallmentResponse(
         Long id,
         Integer installmentNumber,
+        GraceType type,
         LocalDate dueDate,
         BigDecimal openingBalance,
         BigDecimal interest,
-        BigDecimal amortization,
         BigDecimal amount,
+        BigDecimal amortization,
         BigDecimal remainingBalance,
-        InstallmentStatus status,
+        Integer diasMora,
+        BigDecimal tasaMoratoriaTramo,
+        BigDecimal interesMoratorio,
+        BigDecimal pagoTotal,
+        InstallmentDisplayStatus estado,
         LocalDate paymentDate
 ) {
 }

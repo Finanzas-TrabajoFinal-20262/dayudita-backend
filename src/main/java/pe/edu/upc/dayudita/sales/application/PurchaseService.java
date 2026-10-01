@@ -5,9 +5,9 @@ import org.springframework.transaction.annotation.Transactional;
 import pe.edu.upc.dayudita.clients.domain.model.ClientAccount;
 import pe.edu.upc.dayudita.clients.domain.repository.ClientAccountRepository;
 import pe.edu.upc.dayudita.finance.application.CreditPlanService;
-import pe.edu.upc.dayudita.finance.application.FinanceBalanceService;
 import pe.edu.upc.dayudita.finance.application.FinancialConfigurationService;
 import pe.edu.upc.dayudita.finance.domain.model.FinancialConfiguration;
+import pe.edu.upc.dayudita.finance.interfaces.rest.dto.CreditPlanResponse;
 import pe.edu.upc.dayudita.iam.application.CurrentUserService;
 import pe.edu.upc.dayudita.products.domain.model.Product;
 import pe.edu.upc.dayudita.products.domain.repository.ProductRepository;
@@ -28,7 +28,6 @@ public class PurchaseService {
     private final ProductRepository productRepository;
     private final ClientAccountRepository clientAccountRepository;
     private final FinancialConfigurationService financialConfigurationService;
-    private final FinanceBalanceService financeBalanceService;
     private final CreditPlanService creditPlanService;
     private final CurrentUserService currentUserService;
 
@@ -37,7 +36,6 @@ public class PurchaseService {
             ProductRepository productRepository,
             ClientAccountRepository clientAccountRepository,
             FinancialConfigurationService financialConfigurationService,
-            FinanceBalanceService financeBalanceService,
             CreditPlanService creditPlanService,
             CurrentUserService currentUserService
     ){
@@ -45,7 +43,6 @@ public class PurchaseService {
         this.productRepository = productRepository;
         this.clientAccountRepository = clientAccountRepository;
         this.financialConfigurationService = financialConfigurationService;
-        this.financeBalanceService = financeBalanceService;
         this.creditPlanService = creditPlanService;
         this.currentUserService = currentUserService;
     }
@@ -64,14 +61,76 @@ public class PurchaseService {
             throw new IllegalArgumentException("El cliente se encuentra inactivo en esta tienda");
         }
 
-        validateInstallmentCount(request);
-
         Purchase purchase = new Purchase();
         purchase.setClientAccount(account);
         purchase.setPurchaseDate(request.purchaseDate());
         purchase.setPaymentMode(request.paymentMode());
-        purchase.setInstallmentCount(request.installmentCount());
 
+        BigDecimal total = priceItems(storeId, request, purchase);
+        purchase.setTotal(total);
+
+        if(request.paymentMode() == PurchasePaymentMode.CASH){
+            purchase.setStatus(PurchaseStatus.PAID);
+            return purchaseRepository.save(purchase);
+        }
+
+        CreditTerms terms = resolveCreditTerms(request);
+        validateCreditPurchase(storeId, request.clientId(), account, terms, total);
+
+        purchase.setStatus(PurchaseStatus.FINANCED);
+        purchase = purchaseRepository.save(purchase);
+
+        creditPlanService.createPlan(
+                purchase,
+                total,
+                terms.porcentajeCuotaInicial(),
+                terms.numeroMeses(),
+                terms.periodosGraciaTotal(),
+                terms.periodosGraciaParcial()
+        );
+
+        return purchase;
+    }
+
+    public CreditPlanResponse simulateInstallmentPurchase(Long storeId, CreatePurchaseRequest request){
+        currentUserService.validateStoreAdmin(storeId);
+
+        ClientAccount account = clientAccountRepository
+                .findByClient_IdAndStore_Id(request.clientId(), storeId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "El cliente no se encuentra asociado a esta tienda"
+                ));
+
+        if(!account.getActive()){
+            throw new IllegalArgumentException("El cliente se encuentra inactivo en esta tienda");
+        }
+
+        BigDecimal total = priceItems(storeId, request, null);
+        CreditTerms terms = resolveCreditTerms(request);
+        validateCreditPurchase(storeId, request.clientId(), account, terms, total);
+
+        return creditPlanService.simulate(
+                total,
+                terms.porcentajeCuotaInicial(),
+                terms.numeroMeses(),
+                terms.periodosGraciaTotal(),
+                terms.periodosGraciaParcial(),
+                account.getTeaPactada(),
+                account.getTeaMoratoriaPactada(),
+                request.purchaseDate()
+        );
+    }
+
+    public List<Purchase> getPurchasesByStore(Long storeId){
+        currentUserService.validateStoreAdmin(storeId);
+        return purchaseRepository.findByClientAccount_Store_IdOrderByPurchaseDateDesc(storeId);
+    }
+
+    public List<Purchase> getPurchasesByClient(Long clientId){
+        return purchaseRepository.findByClientAccount_Client_IdOrderByPurchaseDateDesc(clientId);
+    }
+
+    private BigDecimal priceItems(Long storeId, CreatePurchaseRequest request, Purchase purchase){
         BigDecimal total = BigDecimal.ZERO;
         Set<Long> productIds = new HashSet<>();
 
@@ -89,115 +148,109 @@ public class PurchaseService {
                 throw new IllegalArgumentException("Uno de los productos se encuentra inactivo");
             }
 
-            validateProductPaymentMode(product, request.paymentMode());
+            if(request.paymentMode() == PurchasePaymentMode.INSTALLMENTS && !product.getAllowsInstallments()){
+                throw new IllegalArgumentException("Uno de los productos no permite pago en cuotas");
+            }
 
             BigDecimal unitPrice = request.paymentMode() == PurchasePaymentMode.CASH
                     ? product.getCashPrice()
                     : product.getCreditPrice();
             BigDecimal subtotal = unitPrice.multiply(BigDecimal.valueOf(itemRequest.quantity()));
 
-            PurchaseDetail detail = new PurchaseDetail();
-            detail.setPurchase(purchase);
-            detail.setProduct(product);
-            detail.setQuantity(itemRequest.quantity());
-            detail.setUnitPrice(unitPrice);
-            detail.setSubtotal(subtotal);
+            if(purchase != null){
+                PurchaseDetail detail = new PurchaseDetail();
+                detail.setPurchase(purchase);
+                detail.setProduct(product);
+                detail.setQuantity(itemRequest.quantity());
+                detail.setUnitPrice(unitPrice);
+                detail.setSubtotal(subtotal);
+                purchase.getDetails().add(detail);
+            }
 
-            purchase.getDetails().add(detail);
             total = total.add(subtotal);
         }
 
-        total = total.setScale(2);
-        purchase.setTotal(total);
-
-        if(request.paymentMode() == PurchasePaymentMode.CASH){
-            purchase.setStatus(PurchaseStatus.PAID);
-            return purchaseRepository.save(purchase);
-        }
-
-        validateCreditPurchase(storeId, request.clientId(), request, total);
-
-        if(request.paymentMode() == PurchasePaymentMode.SINGLE_PAYMENT){
-            purchase.setStatus(PurchaseStatus.OPEN);
-            return purchaseRepository.save(purchase);
-        }
-
-        purchase.setStatus(PurchaseStatus.FINANCED);
-        purchase = purchaseRepository.save(purchase);
-        creditPlanService.createPlan(purchase, request.installmentCount());
-
-        return purchase;
+        return total.setScale(2);
     }
 
-    public List<Purchase> getPurchasesByStore(Long storeId){
-        currentUserService.validateStoreAdmin(storeId);
-        return purchaseRepository.findByClientAccount_Store_IdOrderByPurchaseDateDesc(storeId);
-    }
-
-    public List<Purchase> getPurchasesByClient(Long clientId){
-        return purchaseRepository.findByClientAccount_Client_IdOrderByPurchaseDateDesc(clientId);
-    }
-
-    private void validateInstallmentCount(CreatePurchaseRequest request){
-        if(request.paymentMode() == PurchasePaymentMode.INSTALLMENTS && request.installmentCount() == null){
-            throw new IllegalArgumentException("Debe indicar la cantidad de cuotas");
+    private CreditTerms resolveCreditTerms(CreatePurchaseRequest request){
+        if(request.numeroMeses() == null){
+            throw new IllegalArgumentException("Debe indicar el numero de meses");
         }
 
-        if(request.paymentMode() != PurchasePaymentMode.INSTALLMENTS && request.installmentCount() != null){
-            throw new IllegalArgumentException("La cantidad de cuotas solo corresponde a compras en cuotas");
-        }
-    }
+        BigDecimal porcentajeCuotaInicial = request.porcentajeCuotaInicial() != null
+                ? request.porcentajeCuotaInicial()
+                : BigDecimal.ZERO;
+        int periodosGraciaTotal = request.periodosGraciaTotal() != null ? request.periodosGraciaTotal() : 0;
+        int periodosGraciaParcial = request.periodosGraciaParcial() != null ? request.periodosGraciaParcial() : 0;
 
-    private void validateProductPaymentMode(Product product, PurchasePaymentMode paymentMode){
-        if(paymentMode == PurchasePaymentMode.SINGLE_PAYMENT && !product.getAllowsSinglePayment()){
-            throw new IllegalArgumentException("Uno de los productos no permite pago unico a credito");
-        }
-
-        if(paymentMode == PurchasePaymentMode.INSTALLMENTS && !product.getAllowsInstallments()){
-            throw new IllegalArgumentException("Uno de los productos no permite pago en cuotas");
-        }
+        return new CreditTerms(porcentajeCuotaInicial, request.numeroMeses(), periodosGraciaTotal, periodosGraciaParcial);
     }
 
     private void validateCreditPurchase(
             Long storeId,
             Long clientId,
-            CreatePurchaseRequest request,
-            BigDecimal total
+            ClientAccount account,
+            CreditTerms terms,
+            BigDecimal ventaPrecio
     ){
-        FinancialConfiguration configuration = financialConfigurationService.getConfiguration();
+        FinancialConfiguration policy = financialConfigurationService.getConfiguration(storeId);
 
-        if(total.compareTo(configuration.getMinCapital()) < 0
-                || total.compareTo(configuration.getMaxCapital()) > 0){
-            throw new IllegalArgumentException("El monto de la compra se encuentra fuera del rango permitido");
-        }
+        BigDecimal cuotaInicial = ventaPrecio.multiply(terms.porcentajeCuotaInicial()).setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal principal = ventaPrecio.subtract(cuotaInicial);
 
-        if(financeBalanceService.hasOutstandingCreditAtOtherStore(clientId, storeId)){
-            throw new IllegalArgumentException("El cliente ya tiene una deuda activa en otra tienda");
-        }
-
-        BigDecimal outstandingCapital = financeBalanceService.getOutstandingCapital(clientId);
-
-        if(outstandingCapital.add(total).compareTo(configuration.getCreditLimit()) > 0){
-            throw new IllegalArgumentException("La compra supera el limite de credito permitido");
-        }
-
-        if(request.paymentMode() == PurchasePaymentMode.INSTALLMENTS){
-            if(outstandingCapital.compareTo(BigDecimal.ZERO) > 0){
-                throw new IllegalArgumentException(
-                        "El cliente debe terminar su deuda actual antes de crear un nuevo plan de cuotas"
-                );
-            }
-
-            if(request.installmentCount() > configuration.getMaxInstallments()){
-                throw new IllegalArgumentException("La cantidad de cuotas supera el maximo permitido");
-            }
-        }
-
-        if(request.paymentMode() == PurchasePaymentMode.SINGLE_PAYMENT
-                && creditPlanService.hasActivePlanForClient(clientId)){
+        if(principal.compareTo(policy.getCapitalMinimo()) < 0
+                || principal.compareTo(policy.getCapitalMaximo()) > 0){
             throw new IllegalArgumentException(
-                    "El cliente tiene un plan de cuotas activo y solo puede realizar compras al contado"
+                    "El monto del credito se encuentra fuera del rango permitido por la tienda"
             );
         }
+
+        BigDecimal teaPactada = account.getTeaPactada();
+        if(teaPactada.compareTo(policy.getTeaMinima()) < 0 || teaPactada.compareTo(policy.getTeaMaxima()) > 0){
+            throw new IllegalArgumentException(
+                    "La TEA pactada con el cliente se encuentra fuera del rango permitido por la tienda"
+            );
+        }
+
+        if(terms.numeroMeses() < 1 || terms.numeroMeses() > policy.getPlazoMaximoMeses()){
+            throw new IllegalArgumentException(
+                    "El numero de meses supera el plazo maximo permitido por la tienda"
+            );
+        }
+
+        int totalGracia = terms.periodosGraciaTotal() + terms.periodosGraciaParcial();
+
+        if(totalGracia > 0 && !policy.getOtorgaGracia()){
+            throw new IllegalArgumentException("La tienda no otorga periodos de gracia");
+        }
+
+        if(totalGracia > policy.getMaxPeriodosGracia()){
+            throw new IllegalArgumentException(
+                    "Los periodos de gracia superan el maximo permitido por la tienda"
+            );
+        }
+
+        int n = creditPlanService.totalInstallments(terms.numeroMeses());
+
+        if(totalGracia >= n){
+            throw new IllegalArgumentException(
+                    "Los periodos de gracia deben dejar al menos una cuota sin gracia"
+            );
+        }
+
+        if(creditPlanService.hasActivePlanForClient(clientId)){
+            throw new IllegalArgumentException(
+                    "El cliente ya tiene un credito en cuotas activo"
+            );
+        }
+    }
+
+    private record CreditTerms(
+            BigDecimal porcentajeCuotaInicial,
+            int numeroMeses,
+            int periodosGraciaTotal,
+            int periodosGraciaParcial
+    ) {
     }
 }

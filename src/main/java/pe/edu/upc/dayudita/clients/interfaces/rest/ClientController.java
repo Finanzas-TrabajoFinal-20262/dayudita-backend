@@ -72,8 +72,8 @@ public class ClientController {
                 clientService.associateClient(
                         storeId,
                         clientId,
-                        request.cutoffDay(),
-                        request.paymentDay()
+                        request.teaPactada(),
+                        request.teaMoratoriaPactada()
                 )
         );
     }
@@ -121,8 +121,8 @@ public class ClientController {
                 account.getClient().getDocumentNumber(),
                 account.getClient().getEmail(),
                 account.getClient().getPhone(),
-                account.getCutoffDay(),
-                account.getPaymentDay(),
+                account.getTeaPactada(),
+                account.getTeaMoratoriaPactada(),
                 account.getActive()
         );
     }

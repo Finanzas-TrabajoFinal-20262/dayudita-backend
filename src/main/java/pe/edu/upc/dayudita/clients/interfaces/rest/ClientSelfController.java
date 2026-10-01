@@ -36,8 +36,8 @@ public class ClientSelfController {
                         account.getId(),
                         account.getStore().getId(),
                         account.getStore().getName(),
-                        account.getCutoffDay(),
-                        account.getPaymentDay(),
+                        account.getTeaPactada(),
+                        account.getTeaMoratoriaPactada(),
                         account.getActive()
                 ))
                 .toList();

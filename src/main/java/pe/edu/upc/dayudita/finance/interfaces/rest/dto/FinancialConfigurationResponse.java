@@ -4,16 +4,16 @@ import java.math.BigDecimal;
 
 public record FinancialConfigurationResponse(
         Long id,
+        Long storeId,
         String currency,
         Integer commercialYearDays,
         Integer paymentPeriodDays,
-        BigDecimal minAnnualEffectiveRate,
-        BigDecimal maxAnnualEffectiveRate,
-        BigDecimal annualEffectiveRate,
-        BigDecimal moratoryAnnualEffectiveRate,
-        BigDecimal minCapital,
-        BigDecimal maxCapital,
-        BigDecimal creditLimit,
-        Integer maxInstallments
+        BigDecimal capitalMinimo,
+        BigDecimal capitalMaximo,
+        BigDecimal teaMinima,
+        BigDecimal teaMaxima,
+        Integer plazoMaximoMeses,
+        Integer maxPeriodosGracia,
+        Boolean otorgaGracia
 ) {
 }

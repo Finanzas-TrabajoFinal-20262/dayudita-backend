@@ -10,10 +10,9 @@ import pe.edu.upc.dayudita.clients.domain.model.ClientAccount;
 import pe.edu.upc.dayudita.clients.domain.repository.ClientAccountRepository;
 import pe.edu.upc.dayudita.clients.domain.repository.ClientRepository;
 import pe.edu.upc.dayudita.finance.application.CreditPlanService;
+import pe.edu.upc.dayudita.finance.application.FinancialConfigurationService;
 import pe.edu.upc.dayudita.finance.domain.model.CreditPlanStatus;
-import pe.edu.upc.dayudita.finance.domain.model.FinancialConfiguration;
 import pe.edu.upc.dayudita.finance.domain.repository.CreditPlanRepository;
-import pe.edu.upc.dayudita.finance.domain.repository.FinancialConfigurationRepository;
 import pe.edu.upc.dayudita.iam.domain.model.Administrator;
 import pe.edu.upc.dayudita.iam.domain.model.AdministratorRole;
 import pe.edu.upc.dayudita.iam.domain.repository.AdministratorRepository;
@@ -31,6 +30,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+/**
+ * Datos de demo alineados al Caso B del simulador de Excel
+ * (capital 500, TEA 20%, TEA moratoria 12%, 1 periodo de gracia total y
+ * 1 parcial), para poder comparar directamente la demo contra el Excel.
+ */
 @Component
 @ConditionalOnProperty(name = "dayudita.seed-demo-data", havingValue = "true", matchIfMissing = true)
 public class DemoDataInitializer {
@@ -48,7 +52,7 @@ public class DemoDataInitializer {
     private final ProductRepository productRepository;
     private final PurchaseRepository purchaseRepository;
     private final CreditPlanRepository creditPlanRepository;
-    private final FinancialConfigurationRepository financialConfigurationRepository;
+    private final FinancialConfigurationService financialConfigurationService;
     private final CreditPlanService creditPlanService;
     private final PasswordEncoder passwordEncoder;
 
@@ -60,7 +64,7 @@ public class DemoDataInitializer {
             ProductRepository productRepository,
             PurchaseRepository purchaseRepository,
             CreditPlanRepository creditPlanRepository,
-            FinancialConfigurationRepository financialConfigurationRepository,
+            FinancialConfigurationService financialConfigurationService,
             CreditPlanService creditPlanService,
             PasswordEncoder passwordEncoder
     ){
@@ -71,7 +75,7 @@ public class DemoDataInitializer {
         this.productRepository = productRepository;
         this.purchaseRepository = purchaseRepository;
         this.creditPlanRepository = creditPlanRepository;
-        this.financialConfigurationRepository = financialConfigurationRepository;
+        this.financialConfigurationService = financialConfigurationService;
         this.creditPlanService = creditPlanService;
         this.passwordEncoder = passwordEncoder;
     }
@@ -79,27 +83,20 @@ public class DemoDataInitializer {
     @EventListener(ApplicationReadyEvent.class)
     public void initialize(){
         createSystemAdmin();
-        createFinancialConfiguration();
         Store store = createStore();
+        createCreditPolicy(store);
         createStoreAdmin(store);
         ClientAccount account = createClientAndAccount(store);
         List<Product> products = createProducts(store);
         createFrenchPlan(account, products.get(0));
     }
 
-    private void createFinancialConfiguration(){
-        if(financialConfigurationRepository.findFirstByOrderByIdAsc().isPresent()) return;
-
-        FinancialConfiguration configuration = new FinancialConfiguration();
-        configuration.setMinAnnualEffectiveRate(new BigDecimal("0.05"));
-        configuration.setMaxAnnualEffectiveRate(new BigDecimal("0.80"));
-        configuration.setAnnualEffectiveRate(new BigDecimal("0.24"));
-        configuration.setMoratoryAnnualEffectiveRate(new BigDecimal("0.35"));
-        configuration.setMinCapital(new BigDecimal("20.00"));
-        configuration.setMaxCapital(new BigDecimal("1500.00"));
-        configuration.setCreditLimit(new BigDecimal("2000.00"));
-        configuration.setMaxInstallments(12);
-        financialConfigurationRepository.save(configuration);
+    private void createCreditPolicy(Store store){
+        try {
+            financialConfigurationService.getConfiguration(store.getId());
+        } catch (IllegalArgumentException notFound){
+            financialConfigurationService.createDefaultConfiguration(store);
+        }
     }
 
     private void createSystemAdmin(){
@@ -159,8 +156,8 @@ public class DemoDataInitializer {
                 .orElseGet(ClientAccount::new);
         account.setClient(client);
         account.setStore(store);
-        account.setCutoffDay(15);
-        account.setPaymentDay(30);
+        account.setTeaPactada(new BigDecimal("0.20"));
+        account.setTeaMoratoriaPactada(new BigDecimal("0.12"));
         account.setActive(true);
         return clientAccountRepository.save(account);
     }
@@ -192,7 +189,6 @@ public class DemoDataInitializer {
         product.setUnitOfMeasure("unidad");
         product.setCashPrice(new BigDecimal(cashPrice));
         product.setCreditPrice(new BigDecimal(creditPrice));
-        product.setAllowsSinglePayment(true);
         product.setAllowsInstallments(true);
         product.setActive(true);
         return productRepository.save(product);
@@ -212,23 +208,24 @@ public class DemoDataInitializer {
 
         if(activePlanExists) return;
 
+        BigDecimal ventaPrecio = new BigDecimal("500.00");
+
         Purchase purchase = new Purchase();
         purchase.setClientAccount(account);
-        purchase.setPurchaseDate(LocalDate.now().minusDays(10));
+        purchase.setPurchaseDate(LocalDate.now().minusDays(40));
         purchase.setPaymentMode(PurchasePaymentMode.INSTALLMENTS);
         purchase.setStatus(PurchaseStatus.FINANCED);
-        purchase.setInstallmentCount(6);
-        purchase.setTotal(product.getCreditPrice().multiply(BigDecimal.valueOf(3)));
+        purchase.setTotal(ventaPrecio);
 
         PurchaseDetail detail = new PurchaseDetail();
         detail.setPurchase(purchase);
         detail.setProduct(product);
-        detail.setQuantity(3);
-        detail.setUnitPrice(product.getCreditPrice());
-        detail.setSubtotal(purchase.getTotal());
+        detail.setQuantity(1);
+        detail.setUnitPrice(ventaPrecio);
+        detail.setSubtotal(ventaPrecio);
         purchase.getDetails().add(detail);
 
         purchase = purchaseRepository.save(purchase);
-        creditPlanService.createPlan(purchase, 6);
+        creditPlanService.createPlan(purchase, ventaPrecio, BigDecimal.ZERO, 4, 1, 1);
     }
 }

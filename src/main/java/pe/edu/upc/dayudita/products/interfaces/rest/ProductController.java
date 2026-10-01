@@ -77,7 +77,6 @@ public class ProductController {
                 product.getImageUrl(),
                 product.getCashPrice(),
                 product.getCreditPrice(),
-                product.getAllowsSinglePayment(),
                 product.getAllowsInstallments(),
                 product.getActive()
         );
