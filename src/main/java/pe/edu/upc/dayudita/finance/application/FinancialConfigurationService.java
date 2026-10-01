@@ -34,7 +34,6 @@ public class FinancialConfigurationService {
         configuration.setTeaMinima(new BigDecimal("0.15"));
         configuration.setTeaMaxima(new BigDecimal("0.25"));
         configuration.setPlazoMaximoMeses(4);
-        configuration.setMaxPeriodosGracia(2);
         configuration.setOtorgaGracia(true);
         return financialConfigurationRepository.save(configuration);
     }
@@ -50,7 +49,6 @@ public class FinancialConfigurationService {
         configuration.setTeaMinima(request.teaMinima());
         configuration.setTeaMaxima(request.teaMaxima());
         configuration.setPlazoMaximoMeses(request.plazoMaximoMeses());
-        configuration.setMaxPeriodosGracia(request.maxPeriodosGracia());
         configuration.setOtorgaGracia(request.otorgaGracia());
 
         return financialConfigurationRepository.save(configuration);

@@ -75,7 +75,7 @@ public class PurchaseService {
         }
 
         CreditTerms terms = resolveCreditTerms(request);
-        validateCreditPurchase(storeId, request.clientId(), account, terms, total);
+        FinancialConfiguration policy = validateCreditPurchase(storeId, request.clientId(), account, terms, total);
 
         purchase.setStatus(PurchaseStatus.FINANCED);
         purchase = purchaseRepository.save(purchase);
@@ -85,8 +85,7 @@ public class PurchaseService {
                 total,
                 terms.porcentajeCuotaInicial(),
                 terms.numeroMeses(),
-                terms.periodosGraciaTotal(),
-                terms.periodosGraciaParcial()
+                policy.getOtorgaGracia()
         );
 
         return purchase;
@@ -107,14 +106,13 @@ public class PurchaseService {
 
         BigDecimal total = priceItems(storeId, request, null);
         CreditTerms terms = resolveCreditTerms(request);
-        validateCreditPurchase(storeId, request.clientId(), account, terms, total);
+        FinancialConfiguration policy = validateCreditPurchase(storeId, request.clientId(), account, terms, total);
 
         return creditPlanService.simulate(
                 total,
                 terms.porcentajeCuotaInicial(),
                 terms.numeroMeses(),
-                terms.periodosGraciaTotal(),
-                terms.periodosGraciaParcial(),
+                policy.getOtorgaGracia(),
                 account.getTeaPactada(),
                 account.getTeaMoratoriaPactada(),
                 request.purchaseDate()
@@ -181,13 +179,11 @@ public class PurchaseService {
         BigDecimal porcentajeCuotaInicial = request.porcentajeCuotaInicial() != null
                 ? request.porcentajeCuotaInicial()
                 : BigDecimal.ZERO;
-        int periodosGraciaTotal = request.periodosGraciaTotal() != null ? request.periodosGraciaTotal() : 0;
-        int periodosGraciaParcial = request.periodosGraciaParcial() != null ? request.periodosGraciaParcial() : 0;
 
-        return new CreditTerms(porcentajeCuotaInicial, request.numeroMeses(), periodosGraciaTotal, periodosGraciaParcial);
+        return new CreditTerms(porcentajeCuotaInicial, request.numeroMeses());
     }
 
-    private void validateCreditPurchase(
+    private FinancialConfiguration validateCreditPurchase(
             Long storeId,
             Long clientId,
             ClientAccount account,
@@ -219,38 +215,18 @@ public class PurchaseService {
             );
         }
 
-        int totalGracia = terms.periodosGraciaTotal() + terms.periodosGraciaParcial();
-
-        if(totalGracia > 0 && !policy.getOtorgaGracia()){
-            throw new IllegalArgumentException("La tienda no otorga periodos de gracia");
-        }
-
-        if(totalGracia > policy.getMaxPeriodosGracia()){
-            throw new IllegalArgumentException(
-                    "Los periodos de gracia superan el maximo permitido por la tienda"
-            );
-        }
-
-        int n = creditPlanService.totalInstallments(terms.numeroMeses());
-
-        if(totalGracia >= n){
-            throw new IllegalArgumentException(
-                    "Los periodos de gracia deben dejar al menos una cuota sin gracia"
-            );
-        }
-
         if(creditPlanService.hasActivePlanForClient(clientId)){
             throw new IllegalArgumentException(
                     "El cliente ya tiene un credito en cuotas activo"
             );
         }
+
+        return policy;
     }
 
     private record CreditTerms(
             BigDecimal porcentajeCuotaInicial,
-            int numeroMeses,
-            int periodosGraciaTotal,
-            int periodosGraciaParcial
+            int numeroMeses
     ) {
     }
 }

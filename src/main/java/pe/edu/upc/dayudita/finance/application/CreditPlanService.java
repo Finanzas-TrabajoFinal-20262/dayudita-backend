@@ -50,8 +50,7 @@ public class CreditPlanService {
             BigDecimal ventaPrecio,
             BigDecimal porcentajeCuotaInicial,
             int numeroMeses,
-            int periodosGraciaTotal,
-            int periodosGraciaParcial
+            boolean aplicaGracia
     ){
         ClientAccount account = purchase.getClientAccount();
         BigDecimal teaPactada = account.getTeaPactada();
@@ -64,8 +63,7 @@ public class CreditPlanService {
                 principal,
                 teaPactada,
                 n,
-                periodosGraciaTotal,
-                periodosGraciaParcial,
+                aplicaGracia,
                 purchase.getPurchaseDate()
         );
 
@@ -79,9 +77,8 @@ public class CreditPlanService {
         plan.setTeq(schedule.teq());
         plan.setTeaMoratoriaPactada(account.getTeaMoratoriaPactada());
         plan.setNumeroMeses(numeroMeses);
-        plan.setInstallmentCount(n);
-        plan.setPeriodosGraciaTotal(periodosGraciaTotal);
-        plan.setPeriodosGraciaParcial(periodosGraciaParcial);
+        plan.setInstallmentCount(n + (schedule.diasGraciaTotal() > 0 ? 1 : 0));
+        plan.setDiasGraciaTotal(schedule.diasGraciaTotal());
         plan.setTotalIntereses(schedule.totalIntereses());
         plan.setInteresCapitalizado(schedule.interesCapitalizado());
         plan.setTotalAmortizacion(schedule.totalAmortizacion());
@@ -115,8 +112,7 @@ public class CreditPlanService {
             BigDecimal ventaPrecio,
             BigDecimal porcentajeCuotaInicial,
             int numeroMeses,
-            int periodosGraciaTotal,
-            int periodosGraciaParcial,
+            boolean aplicaGracia,
             BigDecimal teaPactada,
             BigDecimal teaMoratoriaPactada,
             LocalDate purchaseDate
@@ -129,8 +125,7 @@ public class CreditPlanService {
                 principal,
                 teaPactada,
                 n,
-                periodosGraciaTotal,
-                periodosGraciaParcial,
+                aplicaGracia,
                 purchaseDate
         );
 
@@ -171,9 +166,8 @@ public class CreditPlanService {
                 teaMoratoriaPactada,
                 PAYMENT_PERIOD_DAYS,
                 numeroMeses,
-                n,
-                periodosGraciaTotal,
-                periodosGraciaParcial,
+                n + (schedule.diasGraciaTotal() > 0 ? 1 : 0),
+                schedule.diasGraciaTotal(),
                 schedule.totalIntereses(),
                 schedule.interesCapitalizado(),
                 schedule.totalAmortizacion(),
@@ -238,8 +232,7 @@ public class CreditPlanService {
                 PAYMENT_PERIOD_DAYS,
                 plan.getNumeroMeses(),
                 plan.getInstallmentCount(),
-                plan.getPeriodosGraciaTotal(),
-                plan.getPeriodosGraciaParcial(),
+                plan.getDiasGraciaTotal(),
                 plan.getTotalIntereses(),
                 plan.getInteresCapitalizado(),
                 plan.getTotalAmortizacion(),
@@ -305,12 +298,21 @@ public class CreditPlanService {
         return InstallmentDisplayStatus.PENDING;
     }
 
+    /**
+     * Arma el cronograma a partir de fechas de corte (15 y 30 de cada mes).
+     * Si {@code aplicaGracia} es verdadero y la fecha de compra no cae
+     * exactamente en una fecha de corte, se agrega una cuota de gracia total
+     * (fila 1) cuyos dias van de la fecha de compra a la siguiente fecha de
+     * corte (dias variables, segun que tan cerca este la compra del corte).
+     * El interes de esa fila se capitaliza (SF = SI + I) y no requiere pago.
+     * Las n cuotas estandar del metodo frances arrancan recien en esa fecha
+     * de corte, cada 15 dias comerciales (siguiente corte).
+     */
     private Schedule buildSchedule(
             BigDecimal principal,
             BigDecimal teaPactada,
             int n,
-            int periodosGraciaTotal,
-            int periodosGraciaParcial,
+            boolean aplicaGracia,
             LocalDate purchaseDate
     ){
         BigDecimal teq = financialCalculator.periodicRate(teaPactada);
@@ -322,39 +324,58 @@ public class CreditPlanService {
         BigDecimal totalCuotas = BigDecimal.ZERO;
 
         BigDecimal balance = principal;
+        LocalDate firstCutoff = financialDateService.nextCutoffOnOrAfter(purchaseDate);
+        int diasGraciaTotal = aplicaGracia
+                ? financialDateService.commercialDaysBetween(purchaseDate, firstCutoff)
+                : 0;
+        int rowNumber = 0;
+
+        if(diasGraciaTotal > 0){
+            BigDecimal graceRate = financialCalculator.effectiveRateForDays(teaPactada, diasGraciaTotal);
+            BigDecimal interest = financialCalculator.installmentInterest(balance, graceRate);
+            BigDecimal remainingBalance = balance.add(interest);
+
+            rowNumber++;
+            rows.add(new Row(
+                    rowNumber,
+                    GraceType.TOTAL,
+                    firstCutoff,
+                    financialCalculator.money(balance),
+                    financialCalculator.money(interest),
+                    financialCalculator.money(BigDecimal.ZERO),
+                    financialCalculator.money(BigDecimal.ZERO),
+                    financialCalculator.money(remainingBalance)
+            ));
+
+            totalIntereses = totalIntereses.add(interest);
+            interesCapitalizado = interesCapitalizado.add(interest);
+            balance = remainingBalance;
+        }
+
+        /*
+         * Si la tienda otorga gracia (aunque haya salido en 0 dias porque la
+         * compra cayo justo en un corte), la primera cuota estandar arranca
+         * recien en el SIGUIENTE corte (anchor = firstCutoff). Si no otorga
+         * gracia, la primera cuota estandar se cobra ya en el primer corte
+         * (anchor = corte anterior a firstCutoff, para que +1 paso de vuelva
+         * a caer en firstCutoff).
+         */
+        LocalDate anchor = aplicaGracia ? firstCutoff : financialDateService.cutoffAfter(firstCutoff, -1);
 
         for(int k = 1; k <= n; k++){
             BigDecimal openingBalance = balance;
-            GraceType type = resolveGraceType(k, periodosGraciaTotal, periodosGraciaParcial);
 
             BigDecimal interest = financialCalculator.installmentInterest(openingBalance, teq);
-            BigDecimal payment;
-            BigDecimal amortization;
-            BigDecimal remainingBalance;
+            BigDecimal payment = financialCalculator.frenchInstallmentPayment(openingBalance, teq, n - k + 1);
+            BigDecimal amortization = financialCalculator.amortization(payment, interest);
+            BigDecimal remainingBalance = openingBalance.subtract(amortization);
 
-            switch(type){
-                case TOTAL -> {
-                    payment = BigDecimal.ZERO;
-                    amortization = BigDecimal.ZERO;
-                    remainingBalance = openingBalance.add(interest);
-                }
-                case PARTIAL -> {
-                    payment = interest;
-                    amortization = BigDecimal.ZERO;
-                    remainingBalance = openingBalance;
-                }
-                default -> {
-                    payment = financialCalculator.frenchInstallmentPayment(openingBalance, teq, n - k + 1);
-                    amortization = financialCalculator.amortization(payment, interest);
-                    remainingBalance = openingBalance.subtract(amortization);
-                }
-            }
+            LocalDate dueDate = financialDateService.cutoffAfter(anchor, k);
 
-            LocalDate dueDate = financialDateService.dueDateForInstallment(purchaseDate, k, PAYMENT_PERIOD_DAYS);
-
+            rowNumber++;
             rows.add(new Row(
-                    k,
-                    type,
+                    rowNumber,
+                    GraceType.STANDARD,
                     dueDate,
                     financialCalculator.money(openingBalance),
                     financialCalculator.money(interest),
@@ -364,9 +385,6 @@ public class CreditPlanService {
             ));
 
             totalIntereses = totalIntereses.add(interest);
-            if(type == GraceType.TOTAL){
-                interesCapitalizado = interesCapitalizado.add(interest);
-            }
             totalAmortizacion = totalAmortizacion.add(amortization);
             totalCuotas = totalCuotas.add(payment);
 
@@ -376,23 +394,12 @@ public class CreditPlanService {
         return new Schedule(
                 teq,
                 rows,
+                diasGraciaTotal,
                 financialCalculator.money(totalIntereses),
                 financialCalculator.money(interesCapitalizado),
                 financialCalculator.money(totalAmortizacion),
                 financialCalculator.money(totalCuotas)
         );
-    }
-
-    private GraceType resolveGraceType(int k, int periodosGraciaTotal, int periodosGraciaParcial){
-        if(k <= periodosGraciaTotal){
-            return GraceType.TOTAL;
-        }
-
-        if(k <= periodosGraciaTotal + periodosGraciaParcial){
-            return GraceType.PARTIAL;
-        }
-
-        return GraceType.STANDARD;
     }
 
     public List<CreditPlan> getPlansByClient(Long clientId){
@@ -429,6 +436,7 @@ public class CreditPlanService {
     private record Schedule(
             BigDecimal teq,
             List<Row> rows,
+            int diasGraciaTotal,
             BigDecimal totalIntereses,
             BigDecimal interesCapitalizado,
             BigDecimal totalAmortizacion,

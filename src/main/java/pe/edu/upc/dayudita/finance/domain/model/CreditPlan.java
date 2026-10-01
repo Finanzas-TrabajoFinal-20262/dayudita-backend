@@ -51,11 +51,13 @@ public class CreditPlan {
     @Column(nullable = false)
     private Integer installmentCount;
 
+    /**
+     * Dias de gracia total realmente aplicados (de la fecha de compra a la
+     * siguiente fecha de corte, 15 o 30). Varia por compra; 0 si no aplico
+     * gracia (compra hecha justo en una fecha de corte, o tienda sin gracia).
+     */
     @Column(nullable = false)
-    private Integer periodosGraciaTotal;
-
-    @Column(nullable = false)
-    private Integer periodosGraciaParcial;
+    private Integer diasGraciaTotal;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal totalIntereses;

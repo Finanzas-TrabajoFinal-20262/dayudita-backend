@@ -25,10 +25,6 @@ public record UpdateFinancialConfigurationRequest(
         @Max(value = 4, message = "El plazo maximo no puede superar los 4 meses")
         Integer plazoMaximoMeses,
 
-        @NotNull(message = "El maximo de periodos de gracia es obligatorio")
-        @Min(value = 0, message = "El maximo de periodos de gracia no puede ser negativo")
-        Integer maxPeriodosGracia,
-
         @NotNull(message = "Debe indicar si la tienda otorga gracia")
         Boolean otorgaGracia
 

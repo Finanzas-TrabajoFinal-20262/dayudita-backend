@@ -13,7 +13,6 @@ public record FinancialConfigurationResponse(
         BigDecimal teaMinima,
         BigDecimal teaMaxima,
         Integer plazoMaximoMeses,
-        Integer maxPeriodosGracia,
         Boolean otorgaGracia
 ) {
 }

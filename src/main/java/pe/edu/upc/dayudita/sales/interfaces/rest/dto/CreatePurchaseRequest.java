@@ -28,10 +28,6 @@ public record CreatePurchaseRequest(
 
         Integer numeroMeses,
 
-        Integer periodosGraciaTotal,
-
-        Integer periodosGraciaParcial,
-
         @NotEmpty(message = "La compra debe tener al menos un producto")
         List<@Valid PurchaseItemRequest> items
 

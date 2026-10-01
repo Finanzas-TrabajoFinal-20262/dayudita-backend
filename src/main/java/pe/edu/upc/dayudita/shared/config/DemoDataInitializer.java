@@ -226,6 +226,6 @@ public class DemoDataInitializer {
         purchase.getDetails().add(detail);
 
         purchase = purchaseRepository.save(purchase);
-        creditPlanService.createPlan(purchase, ventaPrecio, BigDecimal.ZERO, 4, 1, 1);
+        creditPlanService.createPlan(purchase, ventaPrecio, BigDecimal.ZERO, 4, true);
     }
 }

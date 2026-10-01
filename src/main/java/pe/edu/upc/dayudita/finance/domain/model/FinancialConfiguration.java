@@ -42,9 +42,10 @@ public class FinancialConfiguration {
     @Column(nullable = false)
     private Integer plazoMaximoMeses;
 
-    @Column(nullable = false)
-    private Integer maxPeriodosGracia;
-
+    /**
+     * Si la tienda aplica el periodo de gracia total automatico (de la fecha
+     * de compra a la siguiente fecha de corte, 15 o 30 de cada mes).
+     */
     @Column(nullable = false)
     private Boolean otorgaGracia;
 }

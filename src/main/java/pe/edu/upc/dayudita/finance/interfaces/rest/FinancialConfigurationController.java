@@ -53,7 +53,6 @@ public class FinancialConfigurationController {
                 configuration.getTeaMinima(),
                 configuration.getTeaMaxima(),
                 configuration.getPlazoMaximoMeses(),
-                configuration.getMaxPeriodosGracia(),
                 configuration.getOtorgaGracia()
         );
     }
