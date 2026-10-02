@@ -10,6 +10,8 @@ public record InstallmentResponse(
         Integer installmentNumber,
         GraceType type,
         LocalDate dueDate,
+        BigDecimal tasaPeriodo,
+        Integer diasPeriodo,
         BigDecimal openingBalance,
         BigDecimal interest,
         BigDecimal amount,

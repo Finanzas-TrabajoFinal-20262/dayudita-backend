@@ -139,6 +139,8 @@ public class CreditPlanService {
                     row.k(),
                     row.type(),
                     row.dueDate(),
+                    row.rate(),
+                    row.days(),
                     row.openingBalance(),
                     row.interest(),
                     row.payment(),
@@ -197,11 +199,20 @@ public class CreditPlanService {
                     today
             );
 
+            BigDecimal tasaPeriodo = installment.getType() == GraceType.TOTAL
+                    ? financialCalculator.effectiveRateForDays(plan.getTeaPactada(), plan.getDiasGraciaTotal())
+                    : plan.getTeq();
+            int diasPeriodo = installment.getType() == GraceType.TOTAL
+                    ? plan.getDiasGraciaTotal()
+                    : PAYMENT_PERIOD_DAYS;
+
             installmentResponses.add(new InstallmentResponse(
                     installment.getId(),
                     installment.getInstallmentNumber(),
                     installment.getType(),
                     installment.getDueDate(),
+                    tasaPeriodo,
+                    diasPeriodo,
                     installment.getOpeningBalance(),
                     installment.getInterest(),
                     installment.getAmount(),
@@ -345,6 +356,8 @@ public class CreditPlanService {
                     rowNumber,
                     GraceType.TOTAL,
                     firstCutoff,
+                    graceRate,
+                    diasGraciaTotal,
                     financialCalculator.money(balance),
                     financialCalculator.money(interest),
                     financialCalculator.money(BigDecimal.ZERO),
@@ -379,6 +392,8 @@ public class CreditPlanService {
                     rowNumber,
                     GraceType.STANDARD,
                     dueDate,
+                    teq,
+                    PAYMENT_PERIOD_DAYS,
                     financialCalculator.money(openingBalance),
                     financialCalculator.money(interest),
                     financialCalculator.money(payment),
@@ -428,6 +443,8 @@ public class CreditPlanService {
             int k,
             GraceType type,
             LocalDate dueDate,
+            BigDecimal rate,
+            int days,
             BigDecimal openingBalance,
             BigDecimal interest,
             BigDecimal payment,
