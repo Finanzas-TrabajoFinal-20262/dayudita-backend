@@ -7,6 +7,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import pe.edu.upc.dayudita.clients.domain.model.Client;
 import pe.edu.upc.dayudita.clients.domain.model.ClientAccount;
+import pe.edu.upc.dayudita.clients.domain.model.CreditCurrency;
 import pe.edu.upc.dayudita.clients.domain.repository.ClientAccountRepository;
 import pe.edu.upc.dayudita.clients.domain.repository.ClientRepository;
 import pe.edu.upc.dayudita.finance.application.CreditPlanService;
@@ -158,6 +159,10 @@ public class DemoDataInitializer {
         account.setStore(store);
         account.setTeaPactada(new BigDecimal("0.20"));
         account.setTeaMoratoriaPactada(new BigDecimal("0.12"));
+        account.setCurrency(CreditCurrency.PEN);
+        account.setLimiteCredito(new BigDecimal("1000.00"));
+        account.setPlazoMaximoMeses(4);
+        account.setDiaCorte(15);
         account.setActive(true);
         return clientAccountRepository.save(account);
     }

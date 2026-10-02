@@ -69,12 +69,7 @@ public class ClientController {
             @Valid @RequestBody AssociateClientRequest request
     ){
         return toResponse(
-                clientService.associateClient(
-                        storeId,
-                        clientId,
-                        request.teaPactada(),
-                        request.teaMoratoriaPactada()
-                )
+                clientService.associateClient(storeId, clientId, request)
         );
     }
 
@@ -123,6 +118,10 @@ public class ClientController {
                 account.getClient().getPhone(),
                 account.getTeaPactada(),
                 account.getTeaMoratoriaPactada(),
+                account.getCurrency(),
+                account.getLimiteCredito(),
+                account.getPlazoMaximoMeses(),
+                account.getDiaCorte(),
                 account.getActive()
         );
     }

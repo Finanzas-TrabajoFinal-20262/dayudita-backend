@@ -64,7 +64,8 @@ public class CreditPlanService {
                 teaPactada,
                 n,
                 aplicaGracia,
-                purchase.getPurchaseDate()
+                purchase.getPurchaseDate(),
+                account.getDiaCorte()
         );
 
         CreditPlan plan = new CreditPlan();
@@ -115,7 +116,8 @@ public class CreditPlanService {
             boolean aplicaGracia,
             BigDecimal teaPactada,
             BigDecimal teaMoratoriaPactada,
-            LocalDate purchaseDate
+            LocalDate purchaseDate,
+            int diaCorte
     ){
         int n = totalInstallments(numeroMeses);
         BigDecimal cuotaInicial = financialCalculator.money(ventaPrecio.multiply(porcentajeCuotaInicial));
@@ -126,7 +128,8 @@ public class CreditPlanService {
                 teaPactada,
                 n,
                 aplicaGracia,
-                purchaseDate
+                purchaseDate,
+                diaCorte
         );
 
         List<InstallmentResponse> installments = new ArrayList<>();
@@ -299,21 +302,23 @@ public class CreditPlanService {
     }
 
     /**
-     * Arma el cronograma a partir de fechas de corte (15 y 30 de cada mes).
+     * Arma el cronograma a partir del dia de corte pactado con el cliente.
      * Si {@code aplicaGracia} es verdadero y la fecha de compra no cae
-     * exactamente en una fecha de corte, se agrega una cuota de gracia total
-     * (fila 1) cuyos dias van de la fecha de compra a la siguiente fecha de
-     * corte (dias variables, segun que tan cerca este la compra del corte).
-     * El interes de esa fila se capitaliza (SF = SI + I) y no requiere pago.
-     * Las n cuotas estandar del metodo frances arrancan recien en esa fecha
-     * de corte, cada 15 dias comerciales (siguiente corte).
+     * exactamente en el dia de corte, se agrega una cuota de gracia total
+     * (fila 1) cuyos dias van de la fecha de compra al primer corte (dias
+     * variables, segun que tan cerca este la compra del corte). El interes
+     * de esa fila se capitaliza (SF = SI + I) y no requiere pago. Las n
+     * cuotas estandar del metodo frances arrancan en ese corte y avanzan
+     * cada 15 dias comerciales exactos (sin reenganchar a un dia fijo del
+     * calendario).
      */
     private Schedule buildSchedule(
             BigDecimal principal,
             BigDecimal teaPactada,
             int n,
             boolean aplicaGracia,
-            LocalDate purchaseDate
+            LocalDate purchaseDate,
+            int diaCorte
     ){
         BigDecimal teq = financialCalculator.periodicRate(teaPactada);
 
@@ -324,7 +329,7 @@ public class CreditPlanService {
         BigDecimal totalCuotas = BigDecimal.ZERO;
 
         BigDecimal balance = principal;
-        LocalDate firstCutoff = financialDateService.nextCutoffOnOrAfter(purchaseDate);
+        LocalDate firstCutoff = financialDateService.firstCutoffOnOrAfter(purchaseDate, diaCorte);
         int diasGraciaTotal = aplicaGracia
                 ? financialDateService.commercialDaysBetween(purchaseDate, firstCutoff)
                 : 0;
@@ -354,13 +359,12 @@ public class CreditPlanService {
 
         /*
          * Si la tienda otorga gracia (aunque haya salido en 0 dias porque la
-         * compra cayo justo en un corte), la primera cuota estandar arranca
-         * recien en el SIGUIENTE corte (anchor = firstCutoff). Si no otorga
-         * gracia, la primera cuota estandar se cobra ya en el primer corte
-         * (anchor = corte anterior a firstCutoff, para que +1 paso de vuelva
-         * a caer en firstCutoff).
+         * compra cayo justo en el corte), la primera cuota estandar arranca
+         * recien en el SIGUIENTE corte (+15 dias comerciales desde
+         * firstCutoff). Si no otorga gracia, la primera cuota estandar se
+         * cobra ya en el primer corte.
          */
-        LocalDate anchor = aplicaGracia ? firstCutoff : financialDateService.cutoffAfter(firstCutoff, -1);
+        LocalDate dueDate = aplicaGracia ? financialDateService.nextDueDate(firstCutoff) : firstCutoff;
 
         for(int k = 1; k <= n; k++){
             BigDecimal openingBalance = balance;
@@ -369,8 +373,6 @@ public class CreditPlanService {
             BigDecimal payment = financialCalculator.frenchInstallmentPayment(openingBalance, teq, n - k + 1);
             BigDecimal amortization = financialCalculator.amortization(payment, interest);
             BigDecimal remainingBalance = openingBalance.subtract(amortization);
-
-            LocalDate dueDate = financialDateService.cutoffAfter(anchor, k);
 
             rowNumber++;
             rows.add(new Row(
@@ -389,6 +391,7 @@ public class CreditPlanService {
             totalCuotas = totalCuotas.add(payment);
 
             balance = remainingBalance;
+            dueDate = financialDateService.nextDueDate(dueDate);
         }
 
         return new Schedule(

@@ -38,6 +38,10 @@ public class ClientSelfController {
                         account.getStore().getName(),
                         account.getTeaPactada(),
                         account.getTeaMoratoriaPactada(),
+                        account.getCurrency(),
+                        account.getLimiteCredito(),
+                        account.getPlazoMaximoMeses(),
+                        account.getDiaCorte(),
                         account.getActive()
                 ))
                 .toList();

@@ -115,7 +115,8 @@ public class PurchaseService {
                 policy.getOtorgaGracia(),
                 account.getTeaPactada(),
                 account.getTeaMoratoriaPactada(),
-                request.purchaseDate()
+                request.purchaseDate(),
+                account.getDiaCorte()
         );
     }
 
@@ -202,6 +203,12 @@ public class PurchaseService {
             );
         }
 
+        if(principal.compareTo(account.getLimiteCredito()) > 0){
+            throw new IllegalArgumentException(
+                    "El monto del credito supera el limite de credito pactado con el cliente"
+            );
+        }
+
         BigDecimal teaPactada = account.getTeaPactada();
         if(teaPactada.compareTo(policy.getTeaMinima()) < 0 || teaPactada.compareTo(policy.getTeaMaxima()) > 0){
             throw new IllegalArgumentException(
@@ -209,9 +216,9 @@ public class PurchaseService {
             );
         }
 
-        if(terms.numeroMeses() < 1 || terms.numeroMeses() > policy.getPlazoMaximoMeses()){
+        if(terms.numeroMeses() < 1 || terms.numeroMeses() > account.getPlazoMaximoMeses()){
             throw new IllegalArgumentException(
-                    "El numero de meses supera el plazo maximo permitido por la tienda"
+                    "El numero de meses supera el plazo maximo pactado con el cliente"
             );
         }
 
