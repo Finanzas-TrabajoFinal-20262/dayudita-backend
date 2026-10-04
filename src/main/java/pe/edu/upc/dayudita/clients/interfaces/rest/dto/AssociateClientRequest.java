@@ -11,10 +11,6 @@ public record AssociateClientRequest(
         @DecimalMin(value = "0.0000001", message = "La TEA pactada debe ser mayor a 0")
         BigDecimal teaPactada,
 
-        @NotNull(message = "La TEA moratoria pactada es obligatoria")
-        @DecimalMin(value = "0.0000001", message = "La TEA moratoria pactada debe ser mayor a 0")
-        BigDecimal teaMoratoriaPactada,
-
         @NotNull(message = "La moneda del credito es obligatoria")
         CreditCurrency currency,
 

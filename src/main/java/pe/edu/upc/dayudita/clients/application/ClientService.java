@@ -1,5 +1,6 @@
 package pe.edu.upc.dayudita.clients.application;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class ClientService {
     private final FinancialConfigurationService financialConfigurationService;
     private final PasswordEncoder passwordEncoder;
     private final CurrentUserService currentUserService;
+    private final BigDecimal teaMoratoria;
 
     public ClientService(
             ClientRepository clientRepository,
@@ -38,7 +40,8 @@ public class ClientService {
             AdministratorRepository administratorRepository,
             FinancialConfigurationService financialConfigurationService,
             PasswordEncoder passwordEncoder,
-            CurrentUserService currentUserService
+            CurrentUserService currentUserService,
+            @Value("${dayudita.tea-moratoria:0.12}") BigDecimal teaMoratoria
     ){
         this.clientRepository = clientRepository;
         this.clientAccountRepository = clientAccountRepository;
@@ -47,6 +50,7 @@ public class ClientService {
         this.financialConfigurationService = financialConfigurationService;
         this.passwordEncoder = passwordEncoder;
         this.currentUserService = currentUserService;
+        this.teaMoratoria = teaMoratoria;
     }
 
     public List<ClientAccount> getClientsByStore(Long storeId){
@@ -106,7 +110,7 @@ public class ClientService {
         account.setClient(client);
         account.setStore(store);
         account.setTeaPactada(request.teaPactada());
-        account.setTeaMoratoriaPactada(request.teaMoratoriaPactada());
+        account.setTeaMoratoriaPactada(teaMoratoria);
         account.setCurrency(request.currency());
         account.setLimiteCredito(request.limiteCredito());
         account.setPlazoMaximoMeses(request.plazoMaximoMeses());
@@ -182,7 +186,7 @@ public class ClientService {
         client.setPhone(request.phone());
 
         account.setTeaPactada(request.teaPactada());
-        account.setTeaMoratoriaPactada(request.teaMoratoriaPactada());
+        account.setTeaMoratoriaPactada(teaMoratoria);
         account.setCurrency(request.currency());
         account.setLimiteCredito(request.limiteCredito());
         account.setPlazoMaximoMeses(request.plazoMaximoMeses());
@@ -194,7 +198,7 @@ public class ClientService {
 
     private void applyAccountTerms(ClientAccount account, AssociateClientRequest request){
         account.setTeaPactada(request.teaPactada());
-        account.setTeaMoratoriaPactada(request.teaMoratoriaPactada());
+        account.setTeaMoratoriaPactada(teaMoratoria);
         account.setCurrency(request.currency());
         account.setLimiteCredito(request.limiteCredito());
         account.setPlazoMaximoMeses(request.plazoMaximoMeses());
