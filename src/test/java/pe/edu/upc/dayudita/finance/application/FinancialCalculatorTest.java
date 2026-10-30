@@ -2,13 +2,19 @@ package pe.edu.upc.dayudita.finance.application;
 
 import org.junit.jupiter.api.Test;
 
+import pe.edu.upc.dayudita.finance.domain.model.GraceType;
+import pe.edu.upc.dayudita.finance.interfaces.rest.dto.CreditPlanResponse;
+import pe.edu.upc.dayudita.finance.interfaces.rest.dto.InstallmentResponse;
+
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Reproduce exactamente los casos A, B y C del simulador de Excel
- * (ver Prompt_Refactor_Dayudita_Metodo_Frances-2.md, sección 2).
+ * Casos A (sin gracia), B (gracia total a la TEQ) y C (mora) del simulador
+ * de Excel.
  */
 class FinancialCalculatorTest {
 
@@ -44,73 +50,92 @@ class FinancialCalculatorTest {
     }
 
     @Test
-    void caseB_withGrace(){
-        BigDecimal c = new BigDecimal("500.00");
-        BigDecimal tea = new BigDecimal("0.20");
-        int n = 8;
-        int graceTotal = 1;
-        int gracePartial = 1;
+    void caseB_withTotalGrace_usesTeqAndCapitalizes(){
+        CreditPlanResponse plan = simulate(LocalDate.of(2026, 10, 6), true);
 
-        BigDecimal teq = calculator.periodicRate(tea);
+        assertEquals(new BigDecimal("0.007625660"), plan.teq());
+        assertEquals(9, plan.diasGraciaTotal());
+        assertEquals(8, plan.installmentCount(), "cuotas S, sin la fila T");
+        assertEquals(9, plan.installments().size());
 
-        String[][] expected = {
-                // SI, I, R, A, SF
-                {"500.00", "3.81", "0.00", "0.00", "503.81"},
-                {"503.81", "3.84", "3.84", "0.00", "503.81"},
-                {"503.81", "3.84", "86.22", "82.38", "421.43"},
-                {"421.43", "3.21", "86.22", "83.01", "338.42"},
-                {"338.42", "2.58", "86.22", "83.64", "254.78"},
-                {"254.78", "1.94", "86.22", "84.28", "170.50"},
-                {"170.50", "1.30", "86.22", "84.92", "85.57"},
-                {"85.57", "0.65", "86.22", "85.57", "0.00"}
-        };
+        InstallmentResponse grace = plan.installments().get(0);
+        assertEquals(GraceType.TOTAL, grace.type());
+        assertEquals(LocalDate.of(2026, 10, 15), grace.dueDate());
+        assertEquals(new BigDecimal("0.007625660"), grace.tasaPeriodo());
+        assertEquals(9, grace.diasPeriodo());
+        assertEquals(new BigDecimal("500.00"), grace.openingBalance());
+        assertEquals(new BigDecimal("3.81"), grace.interest());
+        assertEquals(
+                new BigDecimal("3.8128300"),
+                calculator.installmentInterest(new BigDecimal("500.00"), plan.teq()),
+                "interes interno de la fila T"
+        );
+        assertEquals(new BigDecimal("0.00"), grace.amount());
+        assertEquals(new BigDecimal("0.00"), grace.amortization());
+        assertEquals(new BigDecimal("503.81"), grace.remainingBalance());
 
-        BigDecimal balance = c;
-        BigDecimal totalPaid = BigDecimal.ZERO;
+        assertEquals(
+                new BigDecimal("65.1568276"),
+                calculator.frenchInstallmentPayment(new BigDecimal("503.8128300"), plan.teq(), 8),
+                "cuota S interna"
+        );
 
-        for(int k = 1; k <= n; k++){
-            BigDecimal opening = balance;
-            String type = k <= graceTotal ? "T" : (k <= graceTotal + gracePartial ? "P" : "S");
-
-            BigDecimal interest = calculator.installmentInterest(opening, teq);
-            BigDecimal payment;
-            BigDecimal amortization;
-            BigDecimal remaining;
-
-            switch(type){
-                case "T" -> {
-                    payment = BigDecimal.ZERO;
-                    amortization = BigDecimal.ZERO;
-                    remaining = opening.add(interest);
-                }
-                case "P" -> {
-                    payment = interest;
-                    amortization = BigDecimal.ZERO;
-                    remaining = opening;
-                }
-                default -> {
-                    payment = calculator.frenchInstallmentPayment(opening, teq, n - k + 1);
-                    amortization = calculator.amortization(payment, interest);
-                    remaining = opening.subtract(amortization);
-                }
-            }
-
-            int row = k - 1;
-            assertEquals(new BigDecimal(expected[row][0]), calculator.money(opening), "SI k=" + k);
-            assertEquals(new BigDecimal(expected[row][1]), calculator.money(interest), "I k=" + k);
-            assertEquals(new BigDecimal(expected[row][2]), calculator.money(payment), "R k=" + k);
-            assertEquals(new BigDecimal(expected[row][3]), calculator.money(amortization), "A k=" + k);
-            assertEquals(new BigDecimal(expected[row][4]), calculator.money(remaining), "SF k=" + k);
-
-            totalPaid = totalPaid.add(payment);
-            balance = remaining;
+        List<InstallmentResponse> standard = plan.installments().subList(1, 9);
+        for(InstallmentResponse row : standard){
+            assertEquals(GraceType.STANDARD, row.type());
+            assertEquals(new BigDecimal("65.16"), row.amount(), "cuota " + row.installmentNumber());
         }
+        assertEquals(LocalDate.of(2026, 10, 30), standard.get(0).dueDate());
+        assertEquals(LocalDate.of(2027, 2, 15), standard.get(7).dueDate());
+        assertEquals(new BigDecimal("0.00"), standard.get(7).remainingBalance(), "saldo final cuota 8");
 
-        assertEquals(new BigDecimal("521.19"), calculator.money(totalPaid), "total a pagar sin CI");
+        assertEquals(new BigDecimal("21.25"), plan.totalIntereses());
+        assertEquals(new BigDecimal("3.81"), plan.interesCapitalizado());
+        assertEquals(new BigDecimal("521.25"), plan.totalCuotas());
     }
 
     @Test
-    void caseC_moratoryInterestOnInstallmentThreeOfCaseB(){
+    void caseB_graceRowDoesNotDependOnGraceDays(){
+        CreditPlanResponse plan = simulate(LocalDate.of(2026, 8, 25), true);
+
+        assertEquals(20, plan.diasGraciaTotal());
+
+        InstallmentResponse grace = plan.installments().get(0);
+        assertEquals(GraceType.TOTAL, grace.type());
+        assertEquals(new BigDecimal("0.007625660"), grace.tasaPeriodo());
+        assertEquals(20, grace.diasPeriodo());
+        assertEquals(new BigDecimal("3.81"), calculator.money(grace.interest()));
+        assertEquals(new BigDecimal("503.81"), grace.remainingBalance());
+    }
+
+    @Test
+    void caseA_scheduleWithoutGraceHasNoTotalGraceRow(){
+        CreditPlanResponse plan = simulate(LocalDate.of(2026, 10, 15), false);
+
+        assertEquals(0, plan.diasGraciaTotal());
+        assertEquals(8, plan.installmentCount());
+        assertEquals(8, plan.installments().size());
+        assertEquals(GraceType.STANDARD, plan.installments().get(0).type());
+        assertEquals(new BigDecimal("64.66"), calculator.money(plan.installments().get(0).amount()));
+        assertEquals(new BigDecimal("517.31"), plan.totalCuotas());
+    }
+
+    private CreditPlanResponse simulate(LocalDate purchaseDate, boolean aplicaGracia){
+        CreditPlanService service = new CreditPlanService(null, null, calculator, new FinancialDateService());
+        return service.simulate(
+                new BigDecimal("500.00"),
+                BigDecimal.ZERO,
+                4,
+                aplicaGracia,
+                new BigDecimal("0.20"),
+                new BigDecimal("0.12"),
+                purchaseDate,
+                15
+        );
+    }
+
+    @Test
+    void caseC_moratoryInterestOnStandardInstallment(){
         BigDecimal moratoryTea = new BigDecimal("0.12");
         BigDecimal installmentThreePayment = new BigDecimal("86.22");
 

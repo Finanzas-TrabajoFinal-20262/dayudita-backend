@@ -48,12 +48,14 @@ public class CreditPlan {
     @Column(nullable = false)
     private Integer numeroMeses;
 
+    /** Numero de cuotas estandar (S); no incluye la fila de gracia total. */
     @Column(nullable = false)
     private Integer installmentCount;
 
     /**
-     * Dias de gracia total realmente aplicados (de la fecha de compra a la
-     * siguiente fecha de corte, 15 o 30). Varia por compra; 0 si no aplico
+     * Dias de gracia total realmente aplicados (de la fecha de compra al
+     * primer corte del cliente). Dato informativo: el interes de la fila T
+     * usa la TEQ, no una tasa por dias. Varia por compra; 0 si no aplico
      * gracia (compra hecha justo en una fecha de corte, o tienda sin gracia).
      */
     @Column(nullable = false)

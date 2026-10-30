@@ -78,7 +78,7 @@ public class CreditPlanService {
         plan.setTeq(schedule.teq());
         plan.setTeaMoratoriaPactada(account.getTeaMoratoriaPactada());
         plan.setNumeroMeses(numeroMeses);
-        plan.setInstallmentCount(n + (schedule.diasGraciaTotal() > 0 ? 1 : 0));
+        plan.setInstallmentCount(n);
         plan.setDiasGraciaTotal(schedule.diasGraciaTotal());
         plan.setTotalIntereses(schedule.totalIntereses());
         plan.setInteresCapitalizado(schedule.interesCapitalizado());
@@ -171,7 +171,7 @@ public class CreditPlanService {
                 teaMoratoriaPactada,
                 PAYMENT_PERIOD_DAYS,
                 numeroMeses,
-                n + (schedule.diasGraciaTotal() > 0 ? 1 : 0),
+                n,
                 schedule.diasGraciaTotal(),
                 schedule.totalIntereses(),
                 schedule.interesCapitalizado(),
@@ -199,9 +199,6 @@ public class CreditPlanService {
                     today
             );
 
-            BigDecimal tasaPeriodo = installment.getType() == GraceType.TOTAL
-                    ? financialCalculator.effectiveRateForDays(plan.getTeaPactada(), plan.getDiasGraciaTotal())
-                    : plan.getTeq();
             int diasPeriodo = installment.getType() == GraceType.TOTAL
                     ? plan.getDiasGraciaTotal()
                     : PAYMENT_PERIOD_DAYS;
@@ -211,7 +208,7 @@ public class CreditPlanService {
                     installment.getInstallmentNumber(),
                     installment.getType(),
                     installment.getDueDate(),
-                    tasaPeriodo,
+                    plan.getTeq(),
                     diasPeriodo,
                     installment.getOpeningBalance(),
                     installment.getInterest(),
@@ -317,8 +314,10 @@ public class CreditPlanService {
      * Si {@code aplicaGracia} es verdadero y la fecha de compra no cae
      * exactamente en el dia de corte, se agrega una cuota de gracia total
      * (fila 1) cuyos dias van de la fecha de compra al primer corte (dias
-     * variables, segun que tan cerca este la compra del corte). El interes
-     * de esa fila se capitaliza (SF = SI + I) y no requiere pago. Las n
+     * variables, segun que tan cerca este la compra del corte; se muestran
+     * solo como dato informativo). Esa fila usa la TEQ (tasa del periodo)
+     * aunque los dias sean menos de 15: I = SI x TEQ. El interes se
+     * capitaliza (SF = SI + I) y no requiere pago. Las n
      * cuotas estandar del metodo frances arrancan en ese corte y avanzan
      * cada 15 dias comerciales exactos (sin reenganchar a un dia fijo del
      * calendario).
@@ -347,8 +346,7 @@ public class CreditPlanService {
         int rowNumber = 0;
 
         if(diasGraciaTotal > 0){
-            BigDecimal graceRate = financialCalculator.effectiveRateForDays(teaPactada, diasGraciaTotal);
-            BigDecimal interest = financialCalculator.installmentInterest(balance, graceRate);
+            BigDecimal interest = financialCalculator.installmentInterest(balance, teq);
             BigDecimal remainingBalance = balance.add(interest);
 
             rowNumber++;
@@ -356,7 +354,7 @@ public class CreditPlanService {
                     rowNumber,
                     GraceType.TOTAL,
                     firstCutoff,
-                    graceRate,
+                    teq,
                     diasGraciaTotal,
                     financialCalculator.money(balance),
                     financialCalculator.money(interest),

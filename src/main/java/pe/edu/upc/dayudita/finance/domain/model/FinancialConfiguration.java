@@ -44,7 +44,8 @@ public class FinancialConfiguration {
 
     /**
      * Si la tienda aplica el periodo de gracia total automatico (de la fecha
-     * de compra a la siguiente fecha de corte, 15 o 30 de cada mes).
+     * de compra al primer corte del cliente; el interes se calcula con la
+     * TEQ y se capitaliza).
      */
     @Column(nullable = false)
     private Boolean otorgaGracia;

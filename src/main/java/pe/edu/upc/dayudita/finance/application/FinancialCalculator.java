@@ -7,7 +7,7 @@ import java.math.RoundingMode;
 
 /**
  * Motor de cálculo del método francés vencido ordinario, quincenal, con
- * periodos de gracia (total/parcial) y mora. Las fórmulas y las escalas de
+ * gracia total (la fila T usa la misma TEQ del periodo) y mora. Las fórmulas y las escalas de
  * redondeo reproducen exactamente el simulador de Excel que es la fuente de
  * verdad del curso.
  */
@@ -31,7 +31,8 @@ public class FinancialCalculator {
     /**
      * Tasa efectiva equivalente a la TEA dada para un número de días,
      * sobre año comercial de 360 días: (1+TEA)^(dias/360) - 1.
-     * Redondeada a 9 decimales (igual que el TEQ y la tasa moratoria de tramo).
+     * Redondeada a 9 decimales. Se usa para la TEQ (15 días) y la tasa
+     * moratoria de tramo; la gracia total NO la usa (aplica la TEQ).
      */
     public BigDecimal effectiveRateForDays(BigDecimal annualEffectiveRate, int days){
         if(days <= 0){
