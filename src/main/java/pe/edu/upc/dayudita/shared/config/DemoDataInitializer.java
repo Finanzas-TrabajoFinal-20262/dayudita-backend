@@ -40,7 +40,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "dayudita.seed-demo-data", havingValue = "true", matchIfMissing = true)
 public class DemoDataInitializer {
 
-    private static final String DEMO_PASSWORD = "Dayudita123";
+    @org.springframework.beans.factory.annotation.Value("${dayudita.demo-password}")
+    private String demoPassword;
     private static final String SYSTEM_ADMIN_EMAIL = "system@dayudita.pe";
     private static final String STORE_ADMIN_EMAIL = "admin@dayudita.pe";
     private static final String CLIENT_EMAIL = "cliente@dayudita.pe";
