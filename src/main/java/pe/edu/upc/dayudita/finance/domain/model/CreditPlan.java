@@ -28,10 +28,10 @@ public class CreditPlan {
     private BigDecimal ventaPrecio;
 
     @Column(nullable = false, precision = 5, scale = 4)
-    private BigDecimal porcentajeCuotaInicial;
+    private BigDecimal porcentajeCuotaInicial = BigDecimal.ZERO;
 
     @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal cuotaInicial;
+    private BigDecimal cuotaInicial = BigDecimal.ZERO;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal principal;
@@ -53,11 +53,14 @@ public class CreditPlan {
     private Integer installmentCount;
 
     /**
-     * Dias de gracia total: 15 si el periodo 1 es de gracia, 0 si la tienda
-     * no la otorga. Dato informativo: el interes de la fila T usa la TEQ.
+     * Dias de gracia total = periodos de gracia x 15. Dato informativo: el
+     * interes de las filas T usa la TEQ.
      */
     @Column(nullable = false)
     private Integer diasGraciaTotal;
+
+    @Column(name = "periodos_gracia")
+    private Integer periodosGracia;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal totalIntereses;
@@ -80,4 +83,14 @@ public class CreditPlan {
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    public int resolvePeriodosGracia(){
+        if(periodosGracia != null){
+            return periodosGracia;
+        }
+        return diasGraciaTotal == null ? 0 : diasGraciaTotal / 15;
+    }
 }

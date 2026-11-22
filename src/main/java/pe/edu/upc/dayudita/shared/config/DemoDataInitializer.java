@@ -11,6 +11,7 @@ import pe.edu.upc.dayudita.clients.domain.model.CreditCurrency;
 import pe.edu.upc.dayudita.clients.domain.repository.ClientAccountRepository;
 import pe.edu.upc.dayudita.clients.domain.repository.ClientRepository;
 import pe.edu.upc.dayudita.finance.application.CreditPlanService;
+import pe.edu.upc.dayudita.finance.application.CreditTerms;
 import pe.edu.upc.dayudita.finance.application.FinancialConfigurationService;
 import pe.edu.upc.dayudita.finance.domain.model.CreditPlanStatus;
 import pe.edu.upc.dayudita.finance.domain.repository.CreditPlanRepository;
@@ -33,8 +34,9 @@ import java.util.List;
 
 /**
  * Datos de demo alineados al cronograma con gracia de FinancialCalculatorTest
- * (capital 500, TEA 20%, TEA moratoria 12%, 4 meses = 8 periodos, gracia
- * total a la TEQ en el periodo 1).
+ * (capital 500, TEA 20%, TEA moratoria 40%, 4 meses = 8 periodos, 1 periodo
+ * de gracia total a la TEQ). Solo se crea el credito demo si el cliente no
+ * tiene uno activo: los creditos existentes conservan sus propias tasas.
  */
 @Component
 @ConditionalOnProperty(name = "dayudita.seed-demo-data", havingValue = "true", matchIfMissing = true)
@@ -159,7 +161,7 @@ public class DemoDataInitializer {
         account.setClient(client);
         account.setStore(store);
         account.setTeaPactada(new BigDecimal("0.20"));
-        account.setTeaMoratoriaPactada(new BigDecimal("0.12"));
+        account.setTeaMoratoriaPactada(new BigDecimal("0.40"));
         account.setCurrency(CreditCurrency.PEN);
         account.setLimiteCredito(new BigDecimal("1000.00"));
         account.setPlazoMaximoMeses(4);
@@ -232,6 +234,10 @@ public class DemoDataInitializer {
         purchase.getDetails().add(detail);
 
         purchase = purchaseRepository.save(purchase);
-        creditPlanService.createPlan(purchase, ventaPrecio, BigDecimal.ZERO, 4, true);
+        creditPlanService.createPlan(
+                purchase,
+                ventaPrecio,
+                new CreditTerms(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 1)
+        );
     }
 }

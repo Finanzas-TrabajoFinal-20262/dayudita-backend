@@ -22,6 +22,7 @@ public record InstallmentResponse(
         BigDecimal interesMoratorio,
         BigDecimal pagoTotal,
         InstallmentDisplayStatus estado,
-        LocalDate paymentDate
+        LocalDate paymentDate,
+        LocalDate fechaReferenciaMora
 ) {
 }

@@ -1,8 +1,10 @@
 package pe.edu.upc.dayudita.finance.interfaces.rest.dto;
 
 import pe.edu.upc.dayudita.finance.domain.model.CreditPlanStatus;
+import pe.edu.upc.dayudita.sales.interfaces.rest.dto.PurchaseItemResponse;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 public record CreditPlanResponse(
@@ -10,9 +12,8 @@ public record CreditPlanResponse(
         Long purchaseId,
         Long clientId,
         Long storeId,
+        LocalDate purchaseDate,
         BigDecimal ventaPrecio,
-        BigDecimal porcentajeCuotaInicial,
-        BigDecimal cuotaInicial,
         BigDecimal principal,
         BigDecimal teaPactada,
         BigDecimal teq,
@@ -20,6 +21,7 @@ public record CreditPlanResponse(
         Integer paymentPeriodDays,
         Integer numeroMeses,
         Integer installmentCount,
+        Integer periodosGracia,
         Integer diasGraciaTotal,
         BigDecimal totalIntereses,
         BigDecimal interesCapitalizado,
@@ -29,6 +31,9 @@ public record CreditPlanResponse(
         BigDecimal totalInteresMoratorio,
         BigDecimal totalAPagarConMora,
         CreditPlanStatus status,
-        List<InstallmentResponse> installments
+        List<PurchaseItemResponse> items,
+        List<InstallmentResponse> installments,
+        BigDecimal montoPagadoHistorico,
+        List<PaymentResponse> historicalPayments
 ) {
 }

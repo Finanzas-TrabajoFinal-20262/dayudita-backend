@@ -17,4 +17,10 @@ public interface CreditPlanRepository extends JpaRepository<CreditPlan, Long> {
             Long clientId,
             CreditPlanStatus status
     );
+
+    boolean existsByPurchase_ClientAccount_Client_IdAndStatusAndIdNot(
+            Long clientId,
+            CreditPlanStatus status,
+            Long excludedPlanId
+    );
 }

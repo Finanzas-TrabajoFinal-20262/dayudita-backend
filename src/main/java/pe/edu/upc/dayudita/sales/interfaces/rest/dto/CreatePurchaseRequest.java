@@ -1,8 +1,8 @@
 package pe.edu.upc.dayudita.sales.interfaces.rest.dto;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.DecimalMax;
-import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import pe.edu.upc.dayudita.sales.domain.model.PurchasePaymentMode;
@@ -22,11 +22,15 @@ public record CreatePurchaseRequest(
         @NotNull(message = "La modalidad de pago es obligatoria")
         PurchasePaymentMode paymentMode,
 
-        @DecimalMin(value = "0.0", message = "El porcentaje de cuota inicial no puede ser negativo")
-        @DecimalMax(value = "0.5", message = "El porcentaje de cuota inicial no puede superar el 50%")
-        BigDecimal porcentajeCuotaInicial,
-
         Integer numeroMeses,
+
+        BigDecimal teaPactada,
+
+        BigDecimal teaMoratoriaPactada,
+
+        @Min(value = 0, message = "Los periodos de gracia deben estar entre 0 y 3")
+        @Max(value = 3, message = "Los periodos de gracia deben estar entre 0 y 3")
+        Integer periodosGracia,
 
         @NotEmpty(message = "La compra debe tener al menos un producto")
         List<@Valid PurchaseItemRequest> items

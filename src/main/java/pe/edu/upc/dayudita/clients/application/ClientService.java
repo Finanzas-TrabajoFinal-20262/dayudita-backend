@@ -6,9 +6,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pe.edu.upc.dayudita.clients.domain.model.Client;
 import pe.edu.upc.dayudita.clients.domain.model.ClientAccount;
+import pe.edu.upc.dayudita.clients.domain.model.CreditCurrency;
 import pe.edu.upc.dayudita.clients.domain.repository.ClientAccountRepository;
 import pe.edu.upc.dayudita.clients.domain.repository.ClientRepository;
-import pe.edu.upc.dayudita.clients.interfaces.rest.dto.AssociateClientRequest;
 import pe.edu.upc.dayudita.clients.interfaces.rest.dto.CreateClientRequest;
 import pe.edu.upc.dayudita.clients.interfaces.rest.dto.UpdateClientRequest;
 import pe.edu.upc.dayudita.finance.application.FinancialConfigurationService;
@@ -33,6 +33,12 @@ public class ClientService {
     private final CurrentUserService currentUserService;
     private final BigDecimal teaMoratoria;
 
+    private static final BigDecimal DEFAULT_TEA = new BigDecimal("0.20");
+    private static final BigDecimal DEFAULT_TEA_MORATORIA = new BigDecimal("0.40");
+    private static final BigDecimal DEFAULT_LIMIT = new BigDecimal("500.00");
+    private static final int DEFAULT_MONTHS = 4;
+    private static final int DEFAULT_DIA_CORTE = 15;
+
     public ClientService(
             ClientRepository clientRepository,
             ClientAccountRepository clientAccountRepository,
@@ -41,7 +47,7 @@ public class ClientService {
             FinancialConfigurationService financialConfigurationService,
             PasswordEncoder passwordEncoder,
             CurrentUserService currentUserService,
-            @Value("${dayudita.tea-moratoria:0.12}") BigDecimal teaMoratoria
+            @Value("${dayudita.tea-moratoria:0.40}") BigDecimal teaMoratoria
     ){
         this.clientRepository = clientRepository;
         this.clientAccountRepository = clientAccountRepository;
@@ -93,9 +99,6 @@ public class ClientService {
             throw new IllegalArgumentException("El documento ya se encuentra registrado");
         }
 
-        validateTeaPactada(storeId, request.teaPactada());
-        validatePlazoMaximoMeses(storeId, request.plazoMaximoMeses());
-
         Client client = new Client();
         client.setFirstName(request.firstName());
         client.setLastName(request.lastName());
@@ -109,18 +112,13 @@ public class ClientService {
         ClientAccount account = new ClientAccount();
         account.setClient(client);
         account.setStore(store);
-        account.setTeaPactada(request.teaPactada());
-        account.setTeaMoratoriaPactada(teaMoratoria);
-        account.setCurrency(request.currency());
-        account.setLimiteCredito(request.limiteCredito());
-        account.setPlazoMaximoMeses(request.plazoMaximoMeses());
-        account.setDiaCorte(request.diaCorte());
+        applyInternalAccountDefaults(account, storeId);
 
         return clientAccountRepository.save(account);
     }
 
     @Transactional
-    public ClientAccount associateClient(Long storeId, Long clientId, AssociateClientRequest request){
+    public ClientAccount associateClient(Long storeId, Long clientId){
         currentUserService.validateStoreAdmin(storeId);
 
         Store store = storeRepository.findById(storeId)
@@ -137,9 +135,6 @@ public class ClientService {
             throw new IllegalArgumentException("El cliente se encuentra inactivo");
         }
 
-        validateTeaPactada(storeId, request.teaPactada());
-        validatePlazoMaximoMeses(storeId, request.plazoMaximoMeses());
-
         ClientAccount existingAccount = clientAccountRepository
                 .findByClient_IdAndStore_Id(clientId, storeId)
                 .orElse(null);
@@ -149,16 +144,14 @@ public class ClientService {
                 throw new IllegalArgumentException("El cliente ya se encuentra asociado a esta tienda");
             }
 
-            applyAccountTerms(existingAccount, request);
             existingAccount.setActive(true);
-
             return clientAccountRepository.save(existingAccount);
         }
 
         ClientAccount account = new ClientAccount();
         account.setClient(client);
         account.setStore(store);
-        applyAccountTerms(account, request);
+        applyInternalAccountDefaults(account, storeId);
 
         return clientAccountRepository.save(account);
     }
@@ -177,32 +170,53 @@ public class ClientService {
                         "El cliente no se encuentra asociado a esta tienda"
                 ));
 
-        validateTeaPactada(storeId, request.teaPactada());
-        validatePlazoMaximoMeses(storeId, request.plazoMaximoMeses());
-
         Client client = account.getClient();
+
+        boolean emailTaken = clientRepository.findByEmailIgnoreCase(request.email())
+                .filter(other -> !other.getId().equals(client.getId()))
+                .isPresent()
+                || administratorRepository.findByEmailIgnoreCase(request.email()).isPresent();
+        if(emailTaken){
+            throw new IllegalArgumentException("El correo ya se encuentra registrado");
+        }
+
+        boolean documentTaken = clientRepository.findByDocumentNumber(request.documentNumber())
+                .filter(other -> !other.getId().equals(client.getId()))
+                .isPresent();
+        if(documentTaken){
+            throw new IllegalArgumentException("El documento ya se encuentra registrado");
+        }
+
         client.setFirstName(request.firstName());
         client.setLastName(request.lastName());
+        client.setDocumentNumber(request.documentNumber());
+        client.setEmail(request.email());
         client.setPhone(request.phone());
 
-        account.setTeaPactada(request.teaPactada());
-        account.setTeaMoratoriaPactada(teaMoratoria);
-        account.setCurrency(request.currency());
-        account.setLimiteCredito(request.limiteCredito());
-        account.setPlazoMaximoMeses(request.plazoMaximoMeses());
-        account.setDiaCorte(request.diaCorte());
-
         clientRepository.save(client);
-        return clientAccountRepository.save(account);
+        return account;
     }
 
-    private void applyAccountTerms(ClientAccount account, AssociateClientRequest request){
-        account.setTeaPactada(request.teaPactada());
-        account.setTeaMoratoriaPactada(teaMoratoria);
-        account.setCurrency(request.currency());
-        account.setLimiteCredito(request.limiteCredito());
-        account.setPlazoMaximoMeses(request.plazoMaximoMeses());
-        account.setDiaCorte(request.diaCorte());
+    private void applyInternalAccountDefaults(ClientAccount account, Long storeId){
+        FinancialConfiguration policy = financialConfigurationService.findConfiguration(storeId).orElse(null);
+
+        BigDecimal tea = DEFAULT_TEA;
+        BigDecimal limit = DEFAULT_LIMIT;
+        int months = DEFAULT_MONTHS;
+
+        if(policy != null){
+            if(tea.compareTo(policy.getTeaMinima()) < 0) tea = policy.getTeaMinima();
+            if(tea.compareTo(policy.getTeaMaxima()) > 0) tea = policy.getTeaMaxima();
+            limit = policy.getCapitalMaximo();
+            months = policy.getPlazoMaximoMeses();
+        }
+
+        account.setTeaPactada(tea);
+        account.setTeaMoratoriaPactada(teaMoratoria.compareTo(BigDecimal.ZERO) > 0 ? teaMoratoria : DEFAULT_TEA_MORATORIA);
+        account.setCurrency(CreditCurrency.PEN);
+        account.setLimiteCredito(limit);
+        account.setPlazoMaximoMeses(months);
+        account.setDiaCorte(DEFAULT_DIA_CORTE);
     }
 
     @Transactional
@@ -222,25 +236,5 @@ public class ClientService {
     @Transactional
     public void deactivateClient(Long storeId, Long clientId){
         updateClientStatus(storeId, clientId, false);
-    }
-
-    private void validateTeaPactada(Long storeId, BigDecimal teaPactada){
-        FinancialConfiguration policy = financialConfigurationService.getConfiguration(storeId);
-
-        if(teaPactada.compareTo(policy.getTeaMinima()) < 0 || teaPactada.compareTo(policy.getTeaMaxima()) > 0){
-            throw new IllegalArgumentException(
-                    "La TEA pactada debe encontrarse dentro del rango permitido por la tienda"
-            );
-        }
-    }
-
-    private void validatePlazoMaximoMeses(Long storeId, Integer plazoMaximoMeses){
-        FinancialConfiguration policy = financialConfigurationService.getConfiguration(storeId);
-
-        if(plazoMaximoMeses > policy.getPlazoMaximoMeses()){
-            throw new IllegalArgumentException(
-                    "El plazo maximo pactado no puede superar el plazo maximo permitido por la tienda"
-            );
-        }
     }
 }

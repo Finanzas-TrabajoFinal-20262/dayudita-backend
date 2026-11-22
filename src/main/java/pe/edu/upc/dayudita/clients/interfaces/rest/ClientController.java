@@ -66,10 +66,10 @@ public class ClientController {
     public ClientResponse associateClient(
             @PathVariable Long storeId,
             @PathVariable Long clientId,
-            @Valid @RequestBody AssociateClientRequest request
+            @RequestBody(required = false) AssociateClientRequest request
     ){
         return toResponse(
-                clientService.associateClient(storeId, clientId, request)
+                clientService.associateClient(storeId, clientId)
         );
     }
 

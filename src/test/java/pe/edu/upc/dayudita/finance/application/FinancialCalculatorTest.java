@@ -9,6 +9,7 @@ import pe.edu.upc.dayudita.finance.domain.model.GraceType;
 import pe.edu.upc.dayudita.finance.domain.model.Installment;
 import pe.edu.upc.dayudita.finance.domain.repository.CreditPlanRepository;
 import pe.edu.upc.dayudita.finance.domain.repository.InstallmentRepository;
+import pe.edu.upc.dayudita.finance.domain.repository.PaymentRepository;
 import pe.edu.upc.dayudita.finance.interfaces.rest.dto.CreditPlanResponse;
 import pe.edu.upc.dayudita.finance.interfaces.rest.dto.InstallmentResponse;
 import pe.edu.upc.dayudita.sales.domain.model.Purchase;
@@ -232,14 +233,10 @@ class FinancialCalculatorTest {
     }
 
     private CreditPlanResponse simulate(LocalDate purchaseDate, int numeroMeses, boolean aplicaGracia){
-        CreditPlanService service = new CreditPlanService(null, null, calculator, new FinancialDateService());
+        CreditPlanService service = new CreditPlanService(null, null, null, calculator, new FinancialDateService());
         return service.simulate(
                 CAPITAL,
-                BigDecimal.ZERO,
-                numeroMeses,
-                aplicaGracia,
-                new BigDecimal("0.20"),
-                new BigDecimal("0.12"),
+                new CreditTerms(new BigDecimal("0.20"), new BigDecimal("0.40"), numeroMeses, aplicaGracia ? 1 : 0),
                 purchaseDate
         );
     }
@@ -253,7 +250,7 @@ class FinancialCalculatorTest {
         account.setClient(new Client());
         account.setStore(new Store());
         account.setTeaPactada(new BigDecimal("0.20"));
-        account.setTeaMoratoriaPactada(new BigDecimal("0.12"));
+        account.setTeaMoratoriaPactada(new BigDecimal("0.40"));
         account.setDiaCorte(diaCorte);
 
         Purchase purchase = new Purchase();
@@ -270,16 +267,21 @@ class FinancialCalculatorTest {
             saved.add(invocation.getArgument(0));
             return invocation.getArgument(0);
         });
-        when(installmentRepository.findByCreditPlan_IdOrderByInstallmentNumberAsc(any())).thenReturn(saved);
+        when(installmentRepository.findCurrentByCreditPlanId(any())).thenReturn(saved);
 
         CreditPlanService service = new CreditPlanService(
                 planRepository,
                 installmentRepository,
+                mock(PaymentRepository.class),
                 calculator,
                 new FinancialDateService()
         );
 
-        CreditPlan plan = service.createPlan(purchase, CAPITAL, BigDecimal.ZERO, 4, true);
+        CreditPlan plan = service.createPlan(
+                purchase,
+                CAPITAL,
+                new CreditTerms(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 1)
+        );
 
         return service.toCreditPlanResponse(plan);
     }

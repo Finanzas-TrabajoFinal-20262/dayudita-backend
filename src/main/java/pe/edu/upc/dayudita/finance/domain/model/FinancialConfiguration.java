@@ -43,8 +43,9 @@ public class FinancialConfiguration {
     private Integer plazoMaximoMeses;
 
     /**
-     * Si la tienda otorga gracia total en el primer periodo (15 dias desde la
-     * fecha de compra; el interes se calcula con la TEQ y se capitaliza).
+     * Si la tienda permite otorgar gracia total: de 0 a 3 periodos de 15 dias
+     * al inicio del cronograma, elegidos en cada credito (el interes se
+     * calcula con la TEQ y se capitaliza). Si es falso, solo se permite 0.
      */
     @Column(nullable = false)
     private Boolean otorgaGracia;

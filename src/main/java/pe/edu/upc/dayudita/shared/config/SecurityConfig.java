@@ -1,5 +1,6 @@
 package pe.edu.upc.dayudita.shared.config;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -26,6 +27,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/setup", "/error").permitAll()
                         .anyRequest().authenticated()
                 )
+                .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"message\":\"Tu sesion termino. Vuelve a iniciar sesion.\"}");
+                }))
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable());
 

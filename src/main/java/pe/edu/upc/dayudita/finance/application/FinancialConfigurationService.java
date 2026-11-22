@@ -8,6 +8,7 @@ import pe.edu.upc.dayudita.finance.interfaces.rest.dto.UpdateFinancialConfigurat
 import pe.edu.upc.dayudita.stores.domain.model.Store;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 @Service
 public class FinancialConfigurationService {
@@ -23,6 +24,10 @@ public class FinancialConfigurationService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "La tienda aun no tiene una politica de credito registrada"
                 ));
+    }
+
+    public Optional<FinancialConfiguration> findConfiguration(Long storeId){
+        return financialConfigurationRepository.findByStore_Id(storeId);
     }
 
     @Transactional

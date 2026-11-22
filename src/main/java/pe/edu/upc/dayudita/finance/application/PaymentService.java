@@ -41,7 +41,7 @@ public class PaymentService {
     public Payment payInstallment(Long storeId, Long installmentId, LocalDate paymentDate){
         currentUserService.validateStoreAdmin(storeId);
 
-        Installment installment = installmentRepository.findById(installmentId)
+        Installment installment = installmentRepository.findByIdForUpdate(installmentId)
                 .orElseThrow(() -> new IllegalArgumentException("La cuota no existe"));
 
         CreditPlan plan = installment.getCreditPlan();
@@ -50,17 +50,23 @@ public class PaymentService {
             throw new IllegalArgumentException("La cuota no pertenece a esta tienda");
         }
 
+        if(installment.isArchived()){
+            throw new IllegalArgumentException(
+                    "La cuota pertenece a un cronograma anterior del credito y no puede pagarse"
+            );
+        }
+
         if(installment.getType() == GraceType.TOTAL){
             throw new IllegalArgumentException("Esta cuota es de gracia total y no requiere pago");
         }
 
-        if(installment.getStatus() == InstallmentStatus.PAID){
+        if(installment.getStatus() == InstallmentStatus.PAID || paymentRepository.existsByInstallment_Id(installment.getId())){
             throw new IllegalArgumentException("La cuota ya fue pagada");
         }
 
         if(installment.getInstallmentNumber() > 1){
             Installment previousInstallment = installmentRepository
-                    .findByCreditPlan_IdAndInstallmentNumber(
+                    .findCurrentByCreditPlanIdAndInstallmentNumber(
                             plan.getId(),
                             installment.getInstallmentNumber() - 1
                     )
@@ -92,7 +98,7 @@ public class PaymentService {
         installment.setPaymentDate(paymentDate);
         installmentRepository.save(installment);
 
-        if(!installmentRepository.existsByCreditPlan_IdAndStatus(plan.getId(), InstallmentStatus.PENDING)){
+        if(!installmentRepository.existsCurrentByCreditPlanIdAndStatus(plan.getId(), InstallmentStatus.PENDING)){
             plan.setStatus(CreditPlanStatus.PAID);
             creditPlanRepository.save(plan);
 

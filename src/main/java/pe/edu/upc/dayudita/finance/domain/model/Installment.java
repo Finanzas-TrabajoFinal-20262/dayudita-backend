@@ -53,4 +53,11 @@ public class Installment {
     private InstallmentStatus status = InstallmentStatus.PENDING;
 
     private LocalDate paymentDate;
+
+    @Column(name = "archived")
+    private Boolean archived = false;
+
+    public boolean isArchived(){
+        return Boolean.TRUE.equals(archived);
+    }
 }

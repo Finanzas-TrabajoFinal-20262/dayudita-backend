@@ -6,7 +6,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import pe.edu.upc.dayudita.finance.application.CreditPlanService;
 import pe.edu.upc.dayudita.finance.application.PaymentService;
-import pe.edu.upc.dayudita.finance.domain.model.Payment;
 import pe.edu.upc.dayudita.finance.interfaces.rest.dto.CreditPlanResponse;
 import pe.edu.upc.dayudita.finance.interfaces.rest.dto.PaymentResponse;
 import pe.edu.upc.dayudita.iam.application.CurrentUserService;
@@ -48,21 +47,7 @@ public class ClientFinanceController {
 
         return paymentService.getPaymentsByClient(clientId)
                 .stream()
-                .map(this::toPaymentResponse)
+                .map(CreditPlanService::toPaymentResponse)
                 .toList();
-    }
-
-    private PaymentResponse toPaymentResponse(Payment payment){
-        return new PaymentResponse(
-                payment.getId(),
-                payment.getInstallment().getId(),
-                payment.getPaymentDate(),
-                payment.getTeaMoratoriaPactada(),
-                payment.getDiasMora(),
-                payment.getAmortizacion(),
-                payment.getInteres(),
-                payment.getInteresMoratorio(),
-                payment.getTotalAmount()
-        );
     }
 }
