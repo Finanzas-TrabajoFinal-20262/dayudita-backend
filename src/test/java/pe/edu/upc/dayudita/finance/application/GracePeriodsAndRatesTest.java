@@ -33,7 +33,7 @@ class GracePeriodsAndRatesTest {
     @ParameterizedTest
     @ValueSource(ints = {0, 1, 2, 3})
     void totalGrace_isIncludedInTermAndCapitalizesInterest(int graceCount){
-        CreditPlanResponse plan = service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 4, graceCount), PURCHASE_DATE);
+        CreditPlanResponse plan = service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 8, graceCount), PURCHASE_DATE);
 
         assertEquals(8, plan.installmentCount(), "8 periodos incluyen la gracia");
         assertEquals(8, plan.installments().size());
@@ -87,7 +87,7 @@ class GracePeriodsAndRatesTest {
 
     @Test
     void threeGracePeriods_leaveFivePaymentsWithTheSameRecalculatedInstallment(){
-        CreditPlanResponse plan = service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 4, 3), PURCHASE_DATE);
+        CreditPlanResponse plan = service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 8, 3), PURCHASE_DATE);
 
         BigDecimal firstPayment = plan.installments().get(3).amount();
         for(InstallmentResponse row : plan.installments().subList(3, 8)){
@@ -101,11 +101,11 @@ class GracePeriodsAndRatesTest {
     @Test
     void graceMustBeLowerThanTotalPeriods(){
         assertThrows(IllegalArgumentException.class,
-                () -> service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 1, 2), PURCHASE_DATE));
+                () -> service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 2, 2), PURCHASE_DATE));
         assertThrows(IllegalArgumentException.class,
-                () -> service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 4, 4), PURCHASE_DATE));
+                () -> service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 8, 4), PURCHASE_DATE));
         assertDoesNotThrow(
-                () -> service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 1, 1), PURCHASE_DATE));
+                () -> service.simulate(CAPITAL, new CreditTerms(TEA, TEA_MORATORIA, 2, 1), PURCHASE_DATE));
     }
 
     @Test
@@ -123,7 +123,7 @@ class GracePeriodsAndRatesTest {
     void simulationExposesTheRatesOfTheCredit(){
         CreditPlanResponse plan = service.simulate(
                 CAPITAL,
-                new CreditTerms(new BigDecimal("0.22"), new BigDecimal("0.45"), 2, 0),
+                new CreditTerms(new BigDecimal("0.22"), new BigDecimal("0.45"), 4, 0),
                 PURCHASE_DATE
         );
 

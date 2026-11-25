@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 public record CreditTerms(
         BigDecimal teaPactada,
         BigDecimal teaMoratoriaPactada,
-        int numeroMeses,
+        int numeroPeriodos,
         int periodosGracia
 ) {
 }

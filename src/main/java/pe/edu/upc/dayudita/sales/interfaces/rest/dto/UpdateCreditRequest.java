@@ -21,8 +21,8 @@ public record UpdateCreditRequest(
         @NotNull(message = "La TEA moratoria del credito es obligatoria")
         BigDecimal teaMoratoriaPactada,
 
-        @NotNull(message = "Debe indicar el numero de meses")
-        Integer numeroMeses,
+        @NotNull(message = "Debe indicar el numero de periodos")
+        Integer numeroPeriodos,
 
         @NotNull(message = "Debe indicar los periodos de gracia")
         @Min(value = 0, message = "Los periodos de gracia deben estar entre 0 y 3")

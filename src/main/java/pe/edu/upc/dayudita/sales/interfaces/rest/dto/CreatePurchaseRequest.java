@@ -22,7 +22,7 @@ public record CreatePurchaseRequest(
         @NotNull(message = "La modalidad de pago es obligatoria")
         PurchasePaymentMode paymentMode,
 
-        Integer numeroMeses,
+        Integer numeroPeriodos,
 
         BigDecimal teaPactada,
 

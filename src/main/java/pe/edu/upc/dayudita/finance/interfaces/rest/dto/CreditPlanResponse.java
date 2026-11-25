@@ -19,7 +19,6 @@ public record CreditPlanResponse(
         BigDecimal teq,
         BigDecimal teaMoratoriaPactada,
         Integer paymentPeriodDays,
-        Integer numeroMeses,
         Integer installmentCount,
         Integer periodosGracia,
         Integer diasGraciaTotal,

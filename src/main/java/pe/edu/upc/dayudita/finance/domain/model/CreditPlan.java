@@ -45,10 +45,7 @@ public class CreditPlan {
     @Column(nullable = false, precision = 16, scale = 12)
     private BigDecimal teaMoratoriaPactada;
 
-    @Column(nullable = false)
-    private Integer numeroMeses;
-
-    /** Numero total de periodos (meses x 2), incluida la gracia total si la hay. */
+    /** Numero total de periodos de 15 dias (1 a 8), incluida la gracia total si la hay. */
     @Column(nullable = false)
     private Integer installmentCount;
 

@@ -26,8 +26,8 @@ public class CreditPlanService {
 
     public static final int PAYMENT_PERIOD_DAYS = FinancialCalculator.PAYMENT_PERIOD_DAYS;
     public static final int MAX_PERIODOS_GRACIA = 3;
-    private static final int MONTHS_PER_PERIOD = 15;
-    private static final int DAYS_PER_MONTH = 30;
+    /** Maximo de periodos de 15 dias de un credito (4 meses). */
+    public static final int MAX_PERIODOS = 8;
 
     private final CreditPlanRepository creditPlanRepository;
     private final InstallmentRepository installmentRepository;
@@ -47,10 +47,6 @@ public class CreditPlanService {
         this.paymentRepository = paymentRepository;
         this.financialCalculator = financialCalculator;
         this.financialDateService = financialDateService;
-    }
-
-    public int totalInstallments(int numeroMeses){
-        return numeroMeses * DAYS_PER_MONTH / MONTHS_PER_PERIOD;
     }
 
     @Transactional
@@ -104,7 +100,7 @@ public class CreditPlanService {
     }
 
     public CreditPlanResponse simulate(BigDecimal ventaPrecio, CreditTerms terms, LocalDate purchaseDate){
-        int n = totalInstallments(terms.numeroMeses());
+        int n = terms.numeroPeriodos();
         BigDecimal principal = financialCalculator.money(ventaPrecio);
 
         Schedule schedule = buildSchedule(
@@ -153,7 +149,6 @@ public class CreditPlanService {
                 schedule.teq(),
                 terms.teaMoratoriaPactada(),
                 PAYMENT_PERIOD_DAYS,
-                terms.numeroMeses(),
                 n,
                 terms.periodosGracia(),
                 schedule.diasGraciaTotal(),
@@ -252,7 +247,6 @@ public class CreditPlanService {
                 plan.getTeq(),
                 plan.getTeaMoratoriaPactada(),
                 PAYMENT_PERIOD_DAYS,
-                plan.getNumeroMeses(),
                 plan.getInstallmentCount(),
                 plan.resolvePeriodosGracia(),
                 plan.getDiasGraciaTotal(),
@@ -343,7 +337,7 @@ public class CreditPlanService {
     }
 
     private Schedule applySchedule(CreditPlan plan, BigDecimal ventaPrecio, CreditTerms terms, LocalDate purchaseDate){
-        int n = totalInstallments(terms.numeroMeses());
+        int n = terms.numeroPeriodos();
         BigDecimal principal = financialCalculator.money(ventaPrecio);
 
         Schedule schedule = buildSchedule(
@@ -361,7 +355,6 @@ public class CreditPlanService {
         plan.setTeaPactada(terms.teaPactada());
         plan.setTeq(schedule.teq());
         plan.setTeaMoratoriaPactada(terms.teaMoratoriaPactada());
-        plan.setNumeroMeses(terms.numeroMeses());
         plan.setInstallmentCount(n);
         plan.setPeriodosGracia(terms.periodosGracia());
         plan.setDiasGraciaTotal(schedule.diasGraciaTotal());

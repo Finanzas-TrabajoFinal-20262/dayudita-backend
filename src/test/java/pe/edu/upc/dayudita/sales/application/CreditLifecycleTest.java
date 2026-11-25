@@ -205,7 +205,7 @@ class CreditLifecycleTest {
 
     @Test
     void newCredit_financesThe100PercentWithItsOwnRates(){
-        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 2);
+        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 2);
 
         assertEquals(new BigDecimal("322.00"), plan.getPrincipal());
         assertEquals(new BigDecimal("322.00"), plan.getVentaPrecio());
@@ -227,7 +227,7 @@ class CreditLifecycleTest {
 
     @Test
     void creditRates_doNotChangeWhenClientAccountChanges(){
-        CreditPlan plan = createCredit(new BigDecimal("0.22"), new BigDecimal("0.45"), 4, 0);
+        CreditPlan plan = createCredit(new BigDecimal("0.22"), new BigDecimal("0.45"), 8, 0);
         CreditPlanResponse before = creditPlanService.toCreditPlanResponse(plan);
 
         account.setTeaPactada(new BigDecimal("0.18"));
@@ -251,53 +251,98 @@ class CreditLifecycleTest {
         account.setPlazoMaximoMeses(1);
         account.setTeaPactada(new BigDecimal("0.15"));
 
-        CreditPlan plan = createCredit(new BigDecimal("0.24"), new BigDecimal("0.48"), 4, 3);
+        CreditPlan plan = createCredit(new BigDecimal("0.24"), new BigDecimal("0.48"), 8, 3);
 
         assertEquals(new BigDecimal("322.00"), plan.getPrincipal());
         assertEquals(new BigDecimal("0.24"), plan.getTeaPactada());
-        assertEquals(4, plan.getNumeroMeses());
+        assertEquals(8, plan.getInstallmentCount());
         assertEquals(3, plan.getPeriodosGracia());
 
         policy.setPlazoMaximoMeses(2);
         purchases.clear();
         plans.clear();
         assertThrows(IllegalArgumentException.class,
-                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 3, 0));
+                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 6, 0));
     }
 
     @Test
-    void moratoryRate_mayBeEqualOrLowerThanTea(){
-        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.18"), 4, 0);
-        assertEquals(new BigDecimal("0.18"), plan.getTeaMoratoriaPactada());
+    void moratoryRate_mustBeStrictlyGreaterThanTheStoreMaximumTea(){
+        // La politica de la tienda permite TEA de 15 % a 25 %.
+        for(String moratoria : new String[]{"0.18", "0.20", "0.25"}){
+            IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                    () -> createCredit(new BigDecimal("0.20"), new BigDecimal(moratoria), 8, 0),
+                    "moratoria " + moratoria + " no supera el 25 %");
+            assertTrue(error.getMessage().contains("TEA moratoria debe ser mayor"));
+            assertTrue(error.getMessage().contains("25 %"));
+        }
+        assertTrue(plans.isEmpty());
+
+        CreditPlan plan = createCredit(new BigDecimal("0.25"), new BigDecimal("0.26"), 8, 0);
+        assertEquals(new BigDecimal("0.26"), plan.getTeaMoratoriaPactada());
+    }
+
+    @Test
+    void moratoryRate_isComparedAgainstTheUpdatedStoreMaximumTea(){
+        policy.setTeaMaxima(new BigDecimal("0.30"));
+        assertThrows(IllegalArgumentException.class,
+                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.30"), 8, 0));
+        assertDoesNotThrow(() -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.31"), 8, 0));
+    }
+
+    @Test
+    void creditTerm_acceptsAnyNumberOfBiweeklyPeriodsUpToTheStoreMaximum(){
+        for(int periods = 1; periods <= 8; periods++){
+            purchases.clear();
+            plans.clear();
+            installments.clear();
+            CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), periods, 0);
+            assertEquals(periods, plan.getInstallmentCount());
+            assertEquals(periods, currentInstallments(plan.getId()).size());
+        }
+
+        purchases.clear();
+        plans.clear();
+        assertThrows(IllegalArgumentException.class,
+                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 9, 0),
+                "mas de 8 periodos");
+        assertThrows(IllegalArgumentException.class,
+                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 0, 0),
+                "al menos 1 periodo");
+
+        policy.setPlazoMaximoMeses(3);
+        assertThrows(IllegalArgumentException.class,
+                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 7, 0),
+                "la tienda solo permite hasta 6 periodos");
+        assertDoesNotThrow(() -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 5, 0));
     }
 
     @Test
     void creditValidation_ratesAndGrace(){
         assertThrows(IllegalArgumentException.class,
-                () -> createCredit(new BigDecimal("0.20"), BigDecimal.ZERO, 4, 0),
-                "la moratoria debe ser mayor a 0");
+                () -> createCredit(new BigDecimal("0.20"), BigDecimal.ZERO, 8, 0),
+                "la moratoria debe superar el 25 %");
         assertThrows(IllegalArgumentException.class,
-                () -> createCredit(new BigDecimal("0.30"), new BigDecimal("0.40"), 4, 0),
+                () -> createCredit(new BigDecimal("0.30"), new BigDecimal("0.40"), 8, 0),
                 "TEA fuera del rango 15 %-25 %");
         assertThrows(IllegalArgumentException.class,
-                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 1, 2),
+                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 2, 2),
                 "gracia debe ser menor al total de periodos");
 
         policy.setOtorgaGracia(false);
         assertThrows(IllegalArgumentException.class,
-                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 1));
+                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 1));
         assertTrue(plans.isEmpty());
     }
 
     @Test
     void editCredit_recalculatesAndPersistsTheNewSchedule(){
-        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 1);
+        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 1);
 
         UpdateCreditRequest edit = new UpdateCreditRequest(
                 LocalDate.of(2026, 10, 20),
                 new BigDecimal("0.24"),
                 new BigDecimal("0.50"),
-                3,
+                6,
                 0,
                 List.of(new PurchaseItemRequest(1L, 1), new PurchaseItemRequest(3L, 2))
         );
@@ -309,8 +354,7 @@ class CreditLifecycleTest {
         assertEquals(new BigDecimal("395.00"), reloaded.principal());
         assertEquals(new BigDecimal("0.24"), reloaded.teaPactada());
         assertEquals(new BigDecimal("0.50"), reloaded.teaMoratoriaPactada());
-        assertEquals(3, reloaded.numeroMeses());
-        assertEquals(6, reloaded.installmentCount());
+                assertEquals(6, reloaded.installmentCount());
         assertEquals(0, reloaded.periodosGracia());
         assertEquals(LocalDate.of(2026, 10, 20), reloaded.purchaseDate());
         assertEquals(6, reloaded.installments().size());
@@ -333,7 +377,7 @@ class CreditLifecycleTest {
 
     @Test
     void editCredit_withPreviousPayments_keepsThemAsHistory(){
-        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 1);
+        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 1);
         Installment second = currentInstallments(plan.getId()).get(1);
         Payment payment = paymentService.payInstallment(1L, second.getId(), second.getDueDate());
 
@@ -342,7 +386,7 @@ class CreditLifecycleTest {
                 "no se permiten pagos duplicados");
 
         UpdateCreditPlanResponse result = purchaseService.updateCredit(1L, plan.getId(), new UpdateCreditRequest(
-                PURCHASE_DATE, new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 2,
+                PURCHASE_DATE, new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 2,
                 List.of(new PurchaseItemRequest(1L, 2), new PurchaseItemRequest(2L, 1))
         ));
 
@@ -376,16 +420,16 @@ class CreditLifecycleTest {
 
     @Test
     void deleteCredit_removesPlanScheduleAndPaymentsAndFreesClient(){
-        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 1);
+        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 1);
         Installment second = currentInstallments(plan.getId()).get(1);
         paymentService.payInstallment(1L, second.getId(), second.getDueDate());
         purchaseService.updateCredit(1L, plan.getId(), new UpdateCreditRequest(
-                PURCHASE_DATE, new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 0,
+                PURCHASE_DATE, new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 0,
                 List.of(new PurchaseItemRequest(1L, 2), new PurchaseItemRequest(2L, 1))
         ));
 
         assertThrows(IllegalArgumentException.class,
-                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 0),
+                () -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 0),
                 "con un credito activo no puede pedir otro");
 
         purchaseService.deleteCredit(1L, plan.getId());
@@ -397,16 +441,16 @@ class CreditLifecycleTest {
         assertEquals(3, products.size(), "los productos no se borran");
         assertFalse(creditPlanService.hasActivePlanForClient(10L));
 
-        assertDoesNotThrow(() -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 0),
+        assertDoesNotThrow(() -> createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 0),
                 "el cliente queda libre para otro credito");
     }
 
     @Test
     void storeAdmins_cannotTouchCreditsOfAnotherStore(){
-        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 1);
+        CreditPlan plan = createCredit(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 1);
         Installment second = currentInstallments(plan.getId()).get(1);
         UpdateCreditRequest edit = new UpdateCreditRequest(
-                PURCHASE_DATE, new BigDecimal("0.20"), new BigDecimal("0.40"), 2, 0,
+                PURCHASE_DATE, new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 0,
                 List.of(new PurchaseItemRequest(1L, 3))
         );
 
@@ -426,12 +470,12 @@ class CreditLifecycleTest {
         assertTrue(payments.isEmpty());
     }
 
-    private CreditPlan createCredit(BigDecimal tea, BigDecimal moratoria, int months, int grace){
+    private CreditPlan createCredit(BigDecimal tea, BigDecimal moratoria, int periods, int grace){
         Purchase purchase = purchaseService.createPurchase(1L, new CreatePurchaseRequest(
                 10L,
                 PURCHASE_DATE,
                 PurchasePaymentMode.INSTALLMENTS,
-                months,
+                periods,
                 tea,
                 moratoria,
                 grace,

@@ -77,7 +77,7 @@ public class PurchaseService {
         }
 
         CreditTerms terms = resolveCreditTerms(
-                request.numeroMeses(),
+                request.numeroPeriodos(),
                 request.teaPactada(),
                 request.teaMoratoriaPactada(),
                 request.periodosGracia()
@@ -107,7 +107,7 @@ public class PurchaseService {
 
         BigDecimal total = priceItems(storeId, PurchasePaymentMode.INSTALLMENTS, request.items(), null, Map.of());
         CreditTerms terms = resolveCreditTerms(
-                request.numeroMeses(),
+                request.numeroPeriodos(),
                 request.teaPactada(),
                 request.teaMoratoriaPactada(),
                 request.periodosGracia()
@@ -129,7 +129,7 @@ public class PurchaseService {
                 originalUnitPrices(purchase)
         );
         CreditTerms terms = resolveCreditTerms(
-                request.numeroMeses(),
+                request.numeroPeriodos(),
                 request.teaPactada(),
                 request.teaMoratoriaPactada(),
                 request.periodosGracia()
@@ -146,7 +146,7 @@ public class PurchaseService {
         Map<Long, BigDecimal> originalPrices = originalUnitPrices(purchase);
 
         CreditTerms terms = resolveCreditTerms(
-                request.numeroMeses(),
+                request.numeroPeriodos(),
                 request.teaPactada(),
                 request.teaMoratoriaPactada(),
                 request.periodosGracia()
@@ -265,13 +265,13 @@ public class PurchaseService {
     }
 
     private CreditTerms resolveCreditTerms(
-            Integer numeroMeses,
+            Integer numeroPeriodos,
             BigDecimal teaPactada,
             BigDecimal teaMoratoriaPactada,
             Integer periodosGracia
     ){
-        if(numeroMeses == null){
-            throw new IllegalArgumentException("Debe indicar el numero de meses");
+        if(numeroPeriodos == null){
+            throw new IllegalArgumentException("Debe indicar el numero de periodos");
         }
 
         if(teaPactada == null){
@@ -285,7 +285,7 @@ public class PurchaseService {
         return new CreditTerms(
                 teaPactada,
                 teaMoratoriaPactada,
-                numeroMeses,
+                numeroPeriodos,
                 periodosGracia == null ? 0 : periodosGracia
         );
     }
@@ -317,19 +317,25 @@ public class PurchaseService {
             );
         }
 
-        if(terms.teaMoratoriaPactada().compareTo(BigDecimal.ZERO) <= 0){
+        // La moratoria debe superar siempre el tope de TEA que permite la tienda
+        // (estrictamente mayor), asi nunca es menor que la TEA pactada del credito.
+        if(terms.teaMoratoriaPactada().compareTo(policy.getTeaMaxima()) <= 0){
             throw new IllegalArgumentException(
-                    "La TEA moratoria debe ser mayor a 0"
+                    "La TEA moratoria debe ser mayor a la TEA maxima permitida por la tienda ("
+                            + policy.getTeaMaxima().movePointRight(2).stripTrailingZeros().toPlainString()
+                            + " %)"
             );
         }
 
-        if(terms.numeroMeses() < 1 || terms.numeroMeses() > policy.getPlazoMaximoMeses()){
+        int totalPeriodos = terms.numeroPeriodos();
+        int maximoPeriodos = Math.min(CreditPlanService.MAX_PERIODOS, policy.getPlazoMaximoMeses() * 2);
+
+        if(totalPeriodos < 1 || totalPeriodos > maximoPeriodos){
             throw new IllegalArgumentException(
-                    "El numero de meses supera el plazo maximo permitido por la tienda"
+                    "El numero de periodos supera el plazo maximo permitido por la tienda ("
+                            + maximoPeriodos + " periodos de 15 dias)"
             );
         }
-
-        int totalPeriodos = creditPlanService.totalInstallments(terms.numeroMeses());
 
         if(terms.periodosGracia() < 0 || terms.periodosGracia() > CreditPlanService.MAX_PERIODOS_GRACIA){
             throw new IllegalArgumentException("Los periodos de gracia deben estar entre 0 y 3");

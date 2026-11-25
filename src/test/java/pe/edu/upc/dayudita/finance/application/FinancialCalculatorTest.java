@@ -62,7 +62,7 @@ class FinancialCalculatorTest {
 
     @Test
     void case1_withGrace_firstPeriodIsTotalAndStaysInsideN(){
-        CreditPlanResponse plan = simulate(LocalDate.of(2026, 10, 6), 4, true);
+        CreditPlanResponse plan = simulate(LocalDate.of(2026, 10, 6), 8, true);
 
         assertEquals(TEQ, plan.teq());
         assertEquals(15, plan.diasGraciaTotal());
@@ -81,7 +81,7 @@ class FinancialCalculatorTest {
 
     @Test
     void case2_withoutGrace_allPeriodsAreStandard(){
-        CreditPlanResponse plan = simulate(LocalDate.of(2026, 10, 6), 4, false);
+        CreditPlanResponse plan = simulate(LocalDate.of(2026, 10, 6), 8, false);
 
         assertEquals(0, plan.diasGraciaTotal());
         assertEquals(8, plan.installmentCount());
@@ -123,7 +123,7 @@ class FinancialCalculatorTest {
 
     @Test
     void case3_datesCrossingFebruaryDoNotDrift(){
-        CreditPlanResponse plan = simulate(LocalDate.of(2027, 1, 14), 4, true);
+        CreditPlanResponse plan = simulate(LocalDate.of(2027, 1, 14), 8, true);
 
         assertSchedule(
                 CASE_1,
@@ -143,7 +143,7 @@ class FinancialCalculatorTest {
 
     @Test
     void case4_purchaseOnDay31CountsAsDay30(){
-        CreditPlanResponse plan = simulate(LocalDate.of(2026, 10, 31), 2, true);
+        CreditPlanResponse plan = simulate(LocalDate.of(2026, 10, 31), 4, true);
 
         assertEquals(4, plan.installmentCount());
         assertEquals(4, plan.installments().size());
@@ -232,11 +232,11 @@ class FinancialCalculatorTest {
         );
     }
 
-    private CreditPlanResponse simulate(LocalDate purchaseDate, int numeroMeses, boolean aplicaGracia){
+    private CreditPlanResponse simulate(LocalDate purchaseDate, int numeroPeriodos, boolean aplicaGracia){
         CreditPlanService service = new CreditPlanService(null, null, null, calculator, new FinancialDateService());
         return service.simulate(
                 CAPITAL,
-                new CreditTerms(new BigDecimal("0.20"), new BigDecimal("0.40"), numeroMeses, aplicaGracia ? 1 : 0),
+                new CreditTerms(new BigDecimal("0.20"), new BigDecimal("0.40"), numeroPeriodos, aplicaGracia ? 1 : 0),
                 purchaseDate
         );
     }
@@ -280,7 +280,7 @@ class FinancialCalculatorTest {
         CreditPlan plan = service.createPlan(
                 purchase,
                 CAPITAL,
-                new CreditTerms(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 1)
+                new CreditTerms(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 1)
         );
 
         return service.toCreditPlanResponse(plan);

@@ -237,7 +237,7 @@ public class DemoDataInitializer {
         creditPlanService.createPlan(
                 purchase,
                 ventaPrecio,
-                new CreditTerms(new BigDecimal("0.20"), new BigDecimal("0.40"), 4, 1)
+                new CreditTerms(new BigDecimal("0.20"), new BigDecimal("0.40"), 8, 1)
         );
     }
 }
